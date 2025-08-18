@@ -44,11 +44,12 @@ class Schedule(commands.Cog):
                         icon_url=self.client.user.display_avatar.url,
                     ),
                 )
-                content = (
-                    f"<@&{message.mention}>"
-                    if message.mention
-                    else "@everyone" if message.mention == -1 else None
-                )
+                content = ""
+                if message.mention:
+                    if message.mention == -1:
+                        content = "@everyone"
+                    else:
+                        content = f"<@&{message.mention}>"
                 await channel.send(
                     content=content,
                     embed=embed,
