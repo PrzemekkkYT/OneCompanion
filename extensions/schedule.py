@@ -60,9 +60,10 @@ class Schedule(commands.Cog):
     async def before_post_schedule(self):
         await self.client.wait_until_ready()
 
-    @app_commands.command(
-        name=locale_str("schedule"), description=locale_str("schedule_description")
+    schedule_group = app_commands.Group(
+        name="schedule", description=locale_str("schedule_description")
     )
+
     @app_commands.rename(
         title=locale_str("schedule_title"),
         interval=locale_str("schedule_interval"),
@@ -81,6 +82,7 @@ class Schedule(commands.Cog):
         image=locale_str("schedule_image_description"),
         mention=locale_str("schedule_mention_description"),
     )
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.default_permissions(manage_messages=True)
     async def schedule(
         self,
@@ -164,6 +166,125 @@ class Schedule(commands.Cog):
                     ),
                 ],
             ),
+        )
+
+    @schedule_group.command(
+        name=locale_str("schedule_list"),
+        description=locale_str("schedule_list_description"),
+    )
+    @app_commands.rename(show_ids=locale_str("schedule_list_show_ids"))
+    @app_commands.describe(show_ids=locale_str("schedule_list_show_ids_description"))
+    async def schedule_list(
+        self, interaction: discord.Interaction, show_ids: bool = False
+    ):
+        schedules = Messages.select().where(
+            Messages.guild_id == interaction.guild.id,
+        )
+
+        pages = []
+
+        for i in range(ceil(len(schedules) / 5)):
+            page = Page(
+                name=f"Page {i + 1}",
+                embed=Embed(
+                    translator=self.translator,
+                    locale=interaction.locale,
+                    title=locale_str("schedule_list"),
+                    timestamp=datetime.now(),
+                    color=discord.Color.green(),
+                    thumbnail=self.client.user.display_avatar.url,
+                    fields=[
+                        EmbedField(
+                            name=(
+                                f"{schedule.title} | {schedule.id}"
+                                if show_ids
+                                else schedule.title
+                            ),
+                            value=f"• Next post: <t:{schedule.next_post}:f>\n•Every: {from_interval(schedule.interval)}\n•Channel: <#{schedule.channel_id}>\nActive: {'Yes' if schedule.is_active else 'No'}",
+                            inline=False,
+                        )
+                        for schedule in schedules[i * 5 : (i + 1) * 5]
+                    ],
+                ),
+            )
+            pages.append(page)
+
+        pagination = Pagination(
+            pages=pages,
+            translator=self.translator,
+            locale=interaction.locale,
+        )
+        pagination.interaction = interaction
+
+        embed, view = await pagination.create()
+
+        pagination.message = await interaction.response.send_message(
+            embed=embed,
+            view=view,
+        )
+
+    @schedule_group.command(
+        name=locale_str("schedule_delete"),
+        description=locale_str("schedule_delete_description"),
+    )
+    @app_commands.rename(schedule_id=locale_str("schedule_delete_schedule_id"))
+    @app_commands.describe(
+        schedule_id=locale_str("schedule_delete_schedule_id_description")
+    )
+    async def schedule_delete(self, interaction: discord.Interaction, schedule_id: int):
+        schedule = Messages.get_or_none(Messages.id == schedule_id)
+
+        if not schedule:
+            await interaction.response.send_message(
+                content=await self.translator.translate(
+                    locale=interaction.locale, string=locale_str("schedule_not_found")
+                )
+            )
+            return
+
+        schedule.delete_instance()
+
+        await interaction.response.send_message(
+            content=await self.translator.translate(
+                locale=interaction.locale, string=locale_str("schedule_deleted")
+            )
+        )
+
+    @schedule_group.command(
+        name=locale_str("schedule_toggle"),
+        description=locale_str("schedule_toggle_description"),
+    )
+    @app_commands.rename(schedule_id=locale_str("schedule_toggle_schedule_id"))
+    @app_commands.describe(
+        schedule_id=locale_str("schedule_toggle_schedule_id_description")
+    )
+    async def schedule_toggle(self, interaction: discord.Interaction, schedule_id: int):
+        schedule = Messages.get_or_none(Messages.id == schedule_id)
+
+        if not schedule:
+            await interaction.response.send_message(
+                content=await self.translator.translate(
+                    locale=interaction.locale, string=locale_str("schedule_not_found")
+                )
+            )
+            return
+
+        schedule.is_active = int(not schedule.is_active)
+        schedule.save()
+
+        await interaction.response.send_message(
+            content=await self.translator.translate(
+                locale=interaction.locale,
+                string=locale_str(
+                    "schedule_toggled",
+                    active=await self.translator.translate(
+                        locale=interaction.locale,
+                        string=locale_str(
+                            "activated" if schedule.is_active else "deactivated"
+                        ),
+                    ),
+                ),
+            )
         )
 
 

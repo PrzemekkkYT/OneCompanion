@@ -112,6 +112,24 @@ def parse_interval(time_str: str):
     return total_seconds
 
 
+def from_interval(interval: int):
+    weeks = interval // 604800
+    days = (interval % 604800) // 86400
+    hours = (interval % 86400) // 3600
+    minutes = (interval % 3600) // 60
+
+    output = ""
+    if weeks > 0:
+        output += f"{weeks}w "
+    if days > 0:
+        output += f"{days}d "
+    if hours > 0:
+        output += f"{hours}h "
+    if minutes > 0:
+        output += f"{minutes}m"
+    return output
+
+
 def parse_datetime(datetime_str: str):
     """
     Parsing datetime string in format DD/MM HH:MM or just HH:MM

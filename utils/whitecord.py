@@ -231,24 +231,57 @@ class Pagination:
         self.interaction: discord.Interaction
         self.message: discord.Message
 
-    def build_view(self):
+    # async def build_view(self):
+    #     view = discord.ui.View(timeout=None)
+
+    #     for i, page in enumerate(self.pages):
+    #         page.page_id_num = i
+    #         view.add_item(
+    #             self.Page_Button(
+    #                 custom_id=page.page_id,
+    #                 disabled=i == self.current_page,
+    #                 label=self.str_translate(locale_str(page.name)),
+    #                 style=(
+    #                     discord.ButtonStyle.blurple
+    #                     if i == self.current_page
+    #                     else discord.ButtonStyle.green
+    #                 ),
+    #                 paginator=self,
+    #             )
+    #         )
+
+    #     return view
+
+    async def build_view(self):
         view = discord.ui.View(timeout=None)
 
-        for i, page in enumerate(self.pages):
-            page.page_id_num = i
-            view.add_item(
-                self.Page_Button(
-                    custom_id=page.page_id,
-                    disabled=i == self.current_page,
-                    label=self.str_translate(locale_str(page.name)),
-                    style=(
-                        discord.ButtonStyle.blurple
-                        if i == self.current_page
-                        else discord.ButtonStyle.green
-                    ),
-                    paginator=self,
-                )
+        view.add_item(
+            self.Page_Button(
+                custom_id="prev_page",
+                label="<",
+                disabled=self.current_page == 0,
+                style=ButtonStyle.primary,
+                paginator=self,
             )
+        )
+        view.add_item(
+            self.Page_Button(
+                custom_id="page_num",
+                label=f"{self.current_page + 1} / {len(self.pages)}",
+                disabled=True,
+                style=ButtonStyle.secondary,
+                paginator=self,
+            )
+        )
+        view.add_item(
+            self.Page_Button(
+                custom_id="next_page",
+                label=">",
+                disabled=self.current_page == len(self.pages) - 1,
+                style=ButtonStyle.primary,
+                paginator=self,
+            )
+        )
 
         return view
 
@@ -256,26 +289,20 @@ class Pagination:
         return self.pages[self.current_page].embed, self.build_view()
 
     async def set_page(self, page_id):
-        page = next(p for p in self.pages if p.page_id == page_id)
+        if page_id in ["prev_page", "next_page"]:
+            if page_id == "prev_page":
+                self.current_page -= 1
+            else:
+                self.current_page += 1
+            page = self.pages[self.current_page]
+        else:
+            page = next(p for p in self.pages if p.page_id == page_id)
 
-        self.current_page = page.page_id_num
+            self.current_page = page.page_id_num
         try:
             await self.interaction.delete_original_response()
         except discord.errors.NotFound:
             await self.message.delete()
         self.message = await self.interaction.followup.send(
             embed=page.embed, view=self.build_view(), ephemeral=True
-        )
-
-    def str_translate(self, string: Union[str, locale_str]):
-        return (
-            self.translator.translations[
-                (
-                    str(self.locale)
-                    if str(self.locale) in self.translator.translations
-                    else str(Locale.american_english)
-                )
-            ][string.message]
-            if isinstance(string, locale_str)
-            else string
         )
