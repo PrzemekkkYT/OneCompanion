@@ -285,8 +285,8 @@ class Pagination:
 
         return view
 
-    def create(self):
-        return self.pages[self.current_page].embed, self.build_view()
+    async def create(self):
+        return self.pages[self.current_page].embed, await self.build_view()
 
     async def set_page(self, page_id):
         if page_id in ["prev_page", "next_page"]:
@@ -304,5 +304,5 @@ class Pagination:
         except discord.errors.NotFound:
             await self.message.delete()
         self.message = await self.interaction.followup.send(
-            embed=page.embed, view=self.build_view(), ephemeral=True
+            embed=page.embed, view=await self.build_view(), ephemeral=True
         )

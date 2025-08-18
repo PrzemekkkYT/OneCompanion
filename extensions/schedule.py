@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
+from math import ceil
 
 import discord
 from discord import app_commands, TextChannel
@@ -7,8 +8,8 @@ from discord.ext import commands, tasks
 from discord.app_commands import locale_str
 
 from orms.schedules import Messages, ScheduledForToday
-from utils.utils import parse_datetime, parse_interval, timestamp
-from utils.whitecord import Embed, EmbedField, EmbedAuthor
+from utils.utils import parse_datetime, parse_interval, timestamp, from_interval
+from utils.whitecord import Embed, EmbedField, EmbedAuthor, Pagination, Page
 
 
 class Schedule(commands.Cog):
@@ -63,26 +64,30 @@ class Schedule(commands.Cog):
     schedule_group = app_commands.Group(
         name="schedule", description=locale_str("schedule_description")
     )
+    schedule_group.default_permissions = discord.Permissions(manage_messages=True)
 
+    @schedule_group.command(
+        name=locale_str("schedule_plan"),
+        description=locale_str("schedule_plan_description"),
+    )
     @app_commands.rename(
-        title=locale_str("schedule_title"),
-        interval=locale_str("schedule_interval"),
-        content=locale_str("schedule_content"),
-        channel=locale_str("schedule_channel"),
-        initial_datetime_str=locale_str("schedule_initialdatetime"),
-        image=locale_str("schedule_image"),
-        mention=locale_str("schedule_mention"),
+        title=locale_str("schedule_plan_title"),
+        interval=locale_str("schedule_plan_interval"),
+        content=locale_str("schedule_plan_content"),
+        channel=locale_str("schedule_plan_channel"),
+        initial_datetime_str=locale_str("schedule_plan_initialdatetime"),
+        image=locale_str("schedule_plan_image"),
+        mention=locale_str("schedule_plan_mention"),
     )
     @app_commands.describe(
-        title=locale_str("schedule_title_description"),
-        interval=locale_str("schedule_interval_description"),
-        content=locale_str("schedule_content_description"),
-        channel=locale_str("schedule_channel_description"),
-        initial_datetime_str=locale_str("schedule_initialdatetime_description"),
-        image=locale_str("schedule_image_description"),
-        mention=locale_str("schedule_mention_description"),
+        title=locale_str("schedule_plan_title_description"),
+        interval=locale_str("schedule_plan_interval_description"),
+        content=locale_str("schedule_plan_content_description"),
+        channel=locale_str("schedule_plan_channel_description"),
+        initial_datetime_str=locale_str("schedule_plan_initialdatetime_description"),
+        image=locale_str("schedule_plan_image_description"),
+        mention=locale_str("schedule_plan_mention_description"),
     )
-    @app_commands.default_permissions(manage_messages=True)
     @app_commands.default_permissions(manage_messages=True)
     async def schedule(
         self,
@@ -98,6 +103,16 @@ class Schedule(commands.Cog):
         if not channel:
             channel = interaction.channel
 
+        if not any(unit in interval for unit in ("w", "d", "h", "m")):
+            await interaction.response.send_message(
+                await self.translator.translate(
+                    string=locale_str("schedule_interval_error"),
+                    locale=interaction.locale,
+                ),
+                ephemeral=True,
+            )
+            return
+
         if not initial_datetime_str:
             initial_datetime = interaction.created_at
             next_post = timestamp(initial_datetime) + parse_interval(interval)
@@ -109,7 +124,7 @@ class Schedule(commands.Cog):
                 else timestamp(initial_datetime) + parse_interval(interval)
             )
 
-        if initial_datetime < datetime.now(tz=timezone.utc):
+        if initial_datetime < interaction.created_at:
             await interaction.response.send_message(
                 await self.translator.translate(
                     string=locale_str("schedule_initialdatetime_error"),
