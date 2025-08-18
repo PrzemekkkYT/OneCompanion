@@ -35,6 +35,8 @@ class MyClient(commands.Bot):
                 await self.load_extension(f"extensions.{filename[:-3]}")
 
         self.tree.copy_global_to(guild=discord.Object(id="575414543392702480"))
+        self.tree.copy_global_to(guild=discord.Object(id="1398687376745828457"))
+        self.tree.copy_global_to(guild=discord.Object(id="1332709233547939861"))
         await self.tree.sync()
 
     async def on_ready(self):
