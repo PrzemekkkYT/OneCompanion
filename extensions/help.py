@@ -26,7 +26,7 @@ class Help(commands.Cog):
             "schedule toggle",
             "schedule delete",
             "squads",
-            "event/notification",
+            "mass_redeem" "event/notification",
             "event/recurrence",
         ],
     ):
