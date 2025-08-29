@@ -5,3 +5,4 @@ colored
 onnxruntime
 pillow
 peewee
+requests

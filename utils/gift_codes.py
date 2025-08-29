@@ -143,11 +143,14 @@ class GiftCodeRedeemer:
         onnx_session,
         onnx_metadata,
     ):
-        self.req_session, self.stove_info = self.get_stove_info(player_id)
-        self.giftcode = giftcode
-        self.onnx_session = onnx_session
-        self.onnx_metadata = onnx_metadata
-        self.captcha_solution = self.start_captcha()
+        sess, si = self.get_stove_info(player_id)
+
+        if si:
+            self.req_session, self.stove_info = sess, si
+            self.giftcode = giftcode
+            self.onnx_session = onnx_session
+            self.onnx_metadata = onnx_metadata
+            self.captcha_solution = self.start_captcha()
 
     def start_captcha(self):
         captcha_solver = CaptchaSolver(
@@ -175,6 +178,8 @@ class GiftCodeRedeemer:
             headers=headers,
             data=data,
         )
+        if response_stove_info.status_code != 200:
+            print(response_stove_info.status_code)
         return session, response_stove_info.json()
 
     def redeem_gift_code(self):
