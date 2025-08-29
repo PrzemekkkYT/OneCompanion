@@ -1,4 +1,4 @@
-from typing import Optional, Union, List, Any
+from typing import Callable, Optional, Union, List, Any
 from datetime import datetime
 
 import discord
@@ -6,6 +6,8 @@ from discord.app_commands import Translator, locale_str
 from discord.types.embed import EmbedType
 from discord import ButtonStyle, Emoji, PartialEmoji
 from discord.enums import Locale
+
+from utils.translator import WhiteTranslator
 
 
 class EmbedError(Exception): ...
@@ -36,7 +38,7 @@ class Embed(discord.Embed):
     def __init__(
         self,
         *,
-        translator: Translator,
+        translator: WhiteTranslator,
         locale: Optional[Union[str, Locale]] = Locale.american_english,
         colour: Optional[Union[int, discord.Colour]] = None,
         color: Optional[Union[int, discord.Colour]] = None,
@@ -59,16 +61,16 @@ class Embed(discord.Embed):
         super().__init__(
             colour=colour,
             color=color,
-            title=self.str_translate(title),
+            title=translator.translate_sync(title, locale=locale),
             type=embed_type,
             url=url,
-            description=self.str_translate(description),
+            description=translator.translate_sync(description, locale=locale),
             timestamp=timestamp,
         )
         if fields:
             for field in fields:
-                _name = self.str_translate(field.name)
-                _value = self.str_translate(field.value)
+                _name = translator.translate_sync(field.name, locale=locale)
+                _value = translator.translate_sync(field.value, locale=locale)
 
                 self.add_field(name=_name, value=_value, inline=field.inline)
 
@@ -78,39 +80,21 @@ class Embed(discord.Embed):
         if thumbnail:
             self.set_thumbnail(url=thumbnail)
         if footer:
-            self.set_footer(text=self.str_translate(footer))
+            self.set_footer(text=translator.translate_sync(footer, locale=locale))
         if author:
             self.set_author(
-                name=self.str_translate(author.name),
+                name=translator.translate_sync(author.name, locale=locale),
                 icon_url=author.icon_url,
                 url=author.url,
             )
         if image:
             self.set_image(url=image)
 
-    def str_translate(self, string: Union[str, locale_str]):
-        if isinstance(string, locale_str):
-            msg = self.translator.translations[
-                (
-                    str(self.locale)
-                    if str(self.locale) in self.translator.translations
-                    else str(Locale.american_english)
-                )
-            ][string.message]
-
-            return (
-                msg.format(*string.extras["format"])
-                if "format" in string.extras
-                else msg
-            )
-        else:
-            return string
-
 
 class View(discord.ui.View):
     def __init__(
         self,
-        translator: Translator,
+        translator: WhiteTranslator,
         locale: Optional[Union[str, Locale]] = Locale.american_english,
         timeout: float | None = 180,
     ):
@@ -119,26 +103,11 @@ class View(discord.ui.View):
 
         super().__init__(timeout=timeout)
 
-    def str_translate(self, string: Union[str, locale_str]):
-        return (
-            self.translator.translations[
-                (
-                    str(self.locale)
-                    if str(self.locale) in self.translator.translations
-                    else str(Locale.american_english)
-                )
-            ][string.message]
-            if isinstance(string, locale_str)
-            else string
-        )
-
 
 class Button(discord.ui.Button):
     def __init__(
         self,
-        translator: Translator,
-        locale: Optional[Union[str, Locale]] = Locale.american_english,
-        label: Optional[Union[str, locale_str]] = None,
+        label: str = None,
         custom_id: Optional[str] = None,
         disabled: bool = False,
         style: ButtonStyle = ButtonStyle.secondary,
@@ -146,15 +115,11 @@ class Button(discord.ui.Button):
         row: Optional[int] = None,
         callback: Optional[Any] = None,
     ):
-        if not translator or not getattr(translator, "translations", None):
-            raise EmbedError
-        self.translator = translator
-        self.locale = locale
         if callback:
             self.callback = callback
 
         super().__init__(
-            label=self.str_translate(label),
+            label=label,
             custom_id=custom_id,
             disabled=disabled,
             style=style,
@@ -162,26 +127,46 @@ class Button(discord.ui.Button):
             row=row,
         )
 
-    def str_translate(self, string: Union[str, locale_str]):
-        return (
-            self.translator.translations[
-                (
-                    str(self.locale)
-                    if str(self.locale) in self.translator.translations
-                    else str(Locale.american_english)
-                )
-            ][string.message]
-            if isinstance(string, locale_str)
-            else string
+
+class Select(discord.ui.Select):
+    def __init__(
+        self,
+        *,
+        custom_id: str,
+        options: List[discord.SelectOption],
+        placeholder: Optional[str] = None,
+        min_values: int = 1,
+        max_values: int = 1,
+        disabled: bool = False,
+        row: Optional[int] = None,
+        callback=None,
+    ):
+        if callback:
+            self.callback = callback
+
+        super().__init__(
+            custom_id=custom_id,
+            placeholder=placeholder,
+            min_values=min_values,
+            max_values=max_values,
+            options=options,
+            disabled=disabled,
+            row=row,
         )
 
 
 class Page:
-    def __init__(self, name: str, embed: discord.Embed) -> None:
+    def __init__(
+        self,
+        name: str,
+        embed: discord.Embed,
+        page_items: List[discord.ui.Item] = [],
+    ) -> None:
 
         self.name = name
         self.embed = embed
         self.page_id_num = 0
+        self.page_items = page_items
 
     @property
     def page_id(self):
@@ -214,16 +199,19 @@ class Pagination:
             )
 
         async def callback(self, interaction: discord.Interaction):
+            await interaction.response.defer()
             await self.paginator.set_page(self.custom_id)
 
     def __init__(
         self,
         pages: List[Page],
-        translator: Translator,
+        translator: WhiteTranslator,
         locale: Optional[Union[str, Locale]] = Locale.american_english,
+        additional_items: List[discord.ui.Item] = [],
     ) -> None:
         self.pages = pages
         self.current_page = 0
+        self.additional_items = additional_items
 
         self.translator = translator
         self.locale = locale
@@ -231,30 +219,19 @@ class Pagination:
         self.interaction: discord.Interaction
         self.message: discord.Message
 
-    # async def build_view(self):
-    #     view = discord.ui.View(timeout=None)
-
-    #     for i, page in enumerate(self.pages):
-    #         page.page_id_num = i
-    #         view.add_item(
-    #             self.Page_Button(
-    #                 custom_id=page.page_id,
-    #                 disabled=i == self.current_page,
-    #                 label=self.str_translate(locale_str(page.name)),
-    #                 style=(
-    #                     discord.ButtonStyle.blurple
-    #                     if i == self.current_page
-    #                     else discord.ButtonStyle.green
-    #                 ),
-    #                 paginator=self,
-    #             )
-    #         )
-
-    #     return view
-
     async def build_view(self):
         view = discord.ui.View(timeout=None)
 
+        view.add_item(
+            self.Page_Button(
+                custom_id="first_page",
+                label="<<",
+                disabled=self.current_page == 0,
+                style=ButtonStyle.primary,
+                paginator=self,
+                row=0,
+            )
+        )
         view.add_item(
             self.Page_Button(
                 custom_id="prev_page",
@@ -262,6 +239,7 @@ class Pagination:
                 disabled=self.current_page == 0,
                 style=ButtonStyle.primary,
                 paginator=self,
+                row=0,
             )
         )
         view.add_item(
@@ -271,6 +249,7 @@ class Pagination:
                 disabled=True,
                 style=ButtonStyle.secondary,
                 paginator=self,
+                row=0,
             )
         )
         view.add_item(
@@ -280,8 +259,25 @@ class Pagination:
                 disabled=self.current_page == len(self.pages) - 1,
                 style=ButtonStyle.primary,
                 paginator=self,
+                row=0,
             )
         )
+        view.add_item(
+            self.Page_Button(
+                custom_id="last_page",
+                label=">>",
+                disabled=self.current_page == len(self.pages) - 1,
+                style=ButtonStyle.primary,
+                paginator=self,
+                row=0,
+            )
+        )
+
+        for item in self.additional_items:
+            view.add_item(item)
+
+        for page_item in self.pages[self.current_page].page_items:
+            view.add_item(page_item)
 
         return view
 
@@ -295,14 +291,158 @@ class Pagination:
             else:
                 self.current_page += 1
             page = self.pages[self.current_page]
+        elif page_id in ["first_page", "last_page"]:
+            if page_id == "first_page":
+                self.current_page = 0
+            else:
+                self.current_page = len(self.pages) - 1
+            page = self.pages[self.current_page]
         else:
             page = next(p for p in self.pages if p.page_id == page_id)
 
             self.current_page = page.page_id_num
-        try:
-            await self.interaction.delete_original_response()
-        except discord.errors.NotFound:
-            await self.message.delete()
-        self.message = await self.interaction.followup.send(
-            embed=page.embed, view=await self.build_view(), ephemeral=True
+        # try:
+        #     await self.interaction.delete_original_response()
+        # except discord.errors.NotFound:
+        #     await self.message.delete()
+        # self.message = await self.interaction.followup.send(
+        #     embed=page.embed, view=await self.build_view(), ephemeral=True
+        # )
+        # self.message = await self.interaction.response.edit_message(
+        #     embed=page.embed, view=await self.build_view()
+        # )
+        # msg = await self.interaction.original_response()
+        # self.message = await msg.edit(embed=page.embed, view=await self.build_view())
+        # self.message = await self.message.edit(
+        #     embed=page.embed, view=await self.build_view()
+        # )
+        self.message = await self.interaction.edit_original_response(
+            embed=page.embed, view=await self.build_view()
+        )
+
+
+class LVPage:
+    def __init__(self, container: discord.ui.Container):
+        self.container = container
+
+
+class LVPagination:
+    class LVPage_Button(discord.ui.Button):
+        def __init__(
+            self,
+            paginator: "LVPagination",
+            custom_id: str,
+            label: str,
+            style=ButtonStyle.primary,
+            disabled: bool = False,
+        ):
+            super().__init__(
+                custom_id=custom_id, label=label, style=style, disabled=disabled
+            )
+            self.paginator = paginator
+
+        async def callback(self, button_interaction: discord.Interaction):
+            await button_interaction.response.defer()
+            await self.paginator.set_page(self.custom_id)
+
+    class LVPage_ControlButtons(discord.ui.ActionRow):
+        def __init__(self, paginator: "LVPagination") -> None:
+            self.paginator = paginator
+
+            buttons = [
+                self.paginator.LVPage_Button(
+                    paginator=self.paginator,
+                    custom_id="first_page",
+                    label="<<",
+                    disabled=True,
+                ),
+                self.paginator.LVPage_Button(
+                    paginator=self.paginator,
+                    custom_id="prev_page",
+                    label="<",
+                    disabled=True,
+                ),
+                self.paginator.LVPage_Button(
+                    paginator=self.paginator,
+                    custom_id="current_page",
+                    label=f"{self.paginator.current_page + 1} / {len(self.paginator.pages)}",
+                    style=ButtonStyle.secondary,
+                    disabled=True,
+                ),
+                self.paginator.LVPage_Button(
+                    paginator=self.paginator,
+                    custom_id="next_page",
+                    label=">",
+                    disabled=(len(self.paginator.pages) == 1),
+                ),
+                self.paginator.LVPage_Button(
+                    paginator=self.paginator,
+                    custom_id="last_page",
+                    label=">>",
+                    disabled=(len(self.paginator.pages) == 1),
+                ),
+            ]
+
+            super().__init__(*buttons)
+
+        def update_buttons(self):
+            for button in self.children:
+                match button.custom_id:
+                    case "first_page" | "prev_page":
+                        button.disabled = self.paginator.current_page == 0
+                    case "next_page" | "last_page":
+                        button.disabled = (
+                            self.paginator.current_page == len(self.paginator.pages) - 1
+                        )
+                    case "current_page":
+                        button.label = f"{self.paginator.current_page + 1} / {len(self.paginator.pages)}"
+
+    def __init__(
+        self,
+        pages: List[LVPage],
+        interaction: discord.Interaction,
+        timeout: int = 180,
+        on_timeout: Callable[[], None] = None,
+    ):
+        self.__pages = pages
+        self.__interaction = interaction
+
+        self.timeout = timeout
+        self.on_timeout = on_timeout
+
+        self.current_page = 0
+
+        self.control_buttons = self.LVPage_ControlButtons(self)
+
+    @property
+    def pages(self):
+        return self.__pages
+
+    async def send_paginator(self):
+        await self.__interaction.response.send_message(view=await self.build_view())
+
+    async def build_view(self):
+        container = self.__pages[self.current_page].container.copy()
+        container.add_item(discord.ui.Separator())
+        container.add_item(self.control_buttons)
+        view = discord.ui.LayoutView(timeout=self.timeout)
+        view.on_timeout = self.on_timeout
+        view.add_item(container)
+        return view
+
+    async def set_page(self, page_id: str):
+        match page_id:
+            case "first_page":
+                self.current_page = 0
+            case "prev_page":
+                self.current_page -= 1
+            case "next_page":
+                self.current_page += 1
+            case "last_page":
+                self.current_page = len(self.__pages) - 1
+
+        self.control_buttons.update_buttons()
+
+        self.message = await self.__interaction.edit_original_response(
+            view=await self.build_view()
         )

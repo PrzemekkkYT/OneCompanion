@@ -47,6 +47,30 @@ class ScheduledForToday(BaseModel):
         table_name = "ScheduledForToday"
 
 
+class ScheduledEventNotifications(BaseModel):
+    event_id = IntegerField(null=False, unique=True, primary_key=True)
+    guild_id = IntegerField(null=False)
+    event_time = IntegerField(null=False)
+    channel_id = IntegerField(null=False)
+    role_id = IntegerField(null=True)
+    noti_5m = IntegerField(null=True)
+    noti_15m = IntegerField(null=True)
+    noti_30m = IntegerField(null=True)
+    noti_1h = IntegerField(null=True)
+    noti_custom = IntegerField(null=True)
+
+    class Meta:
+        table_name = "ScheduledEventNotifications"
+
+
+class ScheduledEventRecurrence(BaseModel):
+    event_id = IntegerField(null=False, unique=True, primary_key=True)
+    recurrence_rule = TextField(null=False)
+
+    class Meta:
+        table_name = "ScheduledEventRecurrence"
+
+
 class SqliteSequence(BaseModel):
     name = BareField(null=True)
     seq = BareField(null=True)
@@ -54,3 +78,9 @@ class SqliteSequence(BaseModel):
     class Meta:
         table_name = "sqlite_sequence"
         primary_key = False
+
+
+if __name__ == "__main__":
+    Messages.create_table()
+    ScheduledEventNotifications.create_table()
+    ScheduledEventRecurrence.create_table()

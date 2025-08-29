@@ -1,0 +1,5 @@
+{
+    "command": "/event recurrence",
+    "title": "Event Recurrence",
+    "description": "Interactive message to set recurrence rule for an event (how often it should repeat)"
+}

@@ -1,0 +1,56 @@
+{
+    "command": "/squads",
+    "title": "Calculate squads",
+    "description": "Calculate squads for bear hunt based on some available marching rules.",
+    "options": [
+        {
+            "name": "infantry",
+            "type": "number",
+            "description": "number of infantry",
+            "required": true
+        },
+        {
+            "name": "lancer",
+            "type": "number",
+            "description": "number of lancer",
+            "required": true
+        },
+        {
+            "name": "marksmen",
+            "type": "number",
+            "description": "number of marksmen",
+            "required": true
+        },
+        {
+            "name": "own_squad_size",
+            "type": "number",
+            "description": "size of your squad. (When you start the rally)",
+            "required": true
+        },
+        {
+            "name": "joiner_squad_size",
+            "type": "number",
+            "description": "size of joiner squads. (We're currently doing 70000)",
+            "required": true
+        },
+        {
+            "name": "march_count",
+            "type": "number",
+            "description": "Your joiner march count (max 6)",
+            "required": true
+        },
+        {
+            "name": "own_march_rule",
+            "type": "choice",
+            "description": "Troop distribution in your own squad",
+            "required": true
+        },
+        {
+            "name": "joiner_march_rule",
+            "type": "choice",
+            "description": "Troop distribution in joiner squads",
+            "required": true
+        }
+
+    ]
+}

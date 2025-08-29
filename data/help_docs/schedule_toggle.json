@@ -1,0 +1,14 @@
+{
+    "command": "/schedule toggle",
+    "title": "Toggle schedule",
+    "description": "Toggle the scheduled message activity to send it nor not to send it",
+    "options": [
+        {
+            "name": "schedule_id",
+            "type": "number",
+            "description": "ID of the message (from the list)",
+            "required": true
+        }
+
+    ]
+}

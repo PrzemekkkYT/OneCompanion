@@ -1,0 +1,14 @@
+{
+    "command": "/schedule list",
+    "title": "List schedules",
+    "description": "Shows the list of the schedules",
+    "options": [
+        {
+            "name": "show_ids",
+            "type": "bool",
+            "description": "if to show ids of messages (useful for editing and deleting)",
+            "required": false
+        }
+
+    ]
+}

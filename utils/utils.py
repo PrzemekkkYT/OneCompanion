@@ -95,7 +95,7 @@ def catch_err(func, *args, handle=lambda e: e, **kwargs):
 
 def parse_interval(time_str: str):
     """
-    Parsing time string in format xxw xxd xxh xxm
+    Parsing time string in format xxw xxd xxh xxm to seconds
     """
     time = time_str.split(" ")
     total_seconds = 0
@@ -108,8 +108,31 @@ def parse_interval(time_str: str):
             unit = t[-1]
             total_seconds += value * time_units[unit]
         except (ValueError, KeyError):
-            continue
+            return
     return total_seconds
+
+
+def interval_str_to_words(time_str: str):
+    time = time_str.split(" ")
+    time_units = {"w": "week", "d": "day", "h": "hour", "m": "minute"}
+    output_str = ""
+    for t in time:
+        print(t)
+        if len(t) < 2:
+            continue
+        try:
+            num = int(t[:-1])
+            print(num)
+            unit = t[-1]
+            print(unit)
+            output_str = (
+                output_str + f"{num} {time_units[unit]}{'s' if num > 1 else ''} "
+            )
+            print(output_str)
+        except Exception as e:
+            print(e)
+            return
+    return output_str
 
 
 def from_interval(interval: int):
@@ -134,19 +157,36 @@ def parse_datetime(datetime_str: str):
     """
     Parsing datetime string in format DD/MM HH:MM or just HH:MM
     """
+    datetime_formats = [
+        "%H:%M",
+        "%d/%m %H:%M",
+        "%Y-%m-%d %H:%M",
+        "%d.%m.%Y %H:%M",
+        "%Y-%m-%d",
+        "%d.%m.%Y",
+    ]
+
     now = datetime.now(tz=timezone.utc)
 
-    try:
-        if "/" in datetime_str:  # Format z datą
-            dt = datetime.strptime(f"{datetime_str} {now.year}", "%d/%m %H:%M %Y")
+    for fmt in datetime_formats:
+        try:
+            dt = datetime.strptime(datetime_str, fmt)
             dt = dt.replace(tzinfo=timezone.utc)
-        else:  # Sam czas
-            dt = datetime.strptime(datetime_str, "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day, tzinfo=timezone.utc
-            )
-        return dt
-    except ValueError:
-        return None
+
+            if dt < now:
+                dt = dt.replace(year=now.year + 1)
+
+            match fmt:
+                case "%d/%m %H:%M":
+                    dt = dt.replace(year=now.year)
+                case "%H:%M":
+                    dt = dt.replace(year=now.year, month=now.month, day=now.day)
+                case "%Y-%m-%d" | "%d.%m.%Y":
+                    dt = dt.replace(hour=0, minute=0)
+
+            return dt
+        except ValueError:
+            continue
 
 
 def timestamp(date: datetime):

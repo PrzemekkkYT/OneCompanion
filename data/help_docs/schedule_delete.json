@@ -1,0 +1,13 @@
+{
+    "command": "/schedule delete",
+    "title": "Delete schedule",
+    "description": "Delete selected schedule",
+    "options": [
+        {
+            "name": "schedule_id",
+            "type": "number",
+            "description": "ID of the message (from the list)",
+            "required": true
+        }
+    ]
+}

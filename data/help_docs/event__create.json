@@ -1,0 +1,14 @@
+{
+    "command": "/event create",
+    "title": "Create event",
+    "description": "COMMAND IN THE MAKING! DON'T USE!!!\nCreate an event from the template",
+    "options": [
+        {
+            "name": "template",
+            "type": "choice",
+            "description": "One of available predefined templates to create an event.",
+            "required": true
+        }
+
+    ]
+}

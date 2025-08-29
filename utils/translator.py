@@ -27,6 +27,14 @@ class WhiteTranslator(Translator):
         string: locale_str,
         locale: Locale = Locale.american_english,
         context: Optional[TranslationContextTypes] = OtherTranslationContext,
+    ):
+        return self.translate_sync(string=string, locale=locale, context=context)
+
+    def translate_sync(
+        self,
+        string: locale_str,
+        locale: Locale = Locale.american_english,
+        context: Optional[TranslationContextTypes] = OtherTranslationContext,
     ) -> Optional[str]:
         if self.translations is None:
             return str(string)

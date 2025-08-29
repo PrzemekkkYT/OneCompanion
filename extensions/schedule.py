@@ -3,19 +3,29 @@ from typing import Optional
 from math import ceil
 
 import discord
-from discord import app_commands, TextChannel
+from discord import ButtonStyle, ScheduledEvent, app_commands, TextChannel
 from discord.ext import commands, tasks
 from discord.app_commands import locale_str
 
 from orms.schedules import Messages, ScheduledForToday
 from utils.utils import parse_datetime, parse_interval, timestamp, from_interval
-from utils.whitecord import Embed, EmbedField, EmbedAuthor, Pagination, Page
+from utils.whitecord import (
+    Embed,
+    EmbedField,
+    EmbedAuthor,
+    Pagination,
+    Page,
+    Select,
+    View,
+    Button,
+)
+from utils.translator import WhiteTranslator
 
 
 class Schedule(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client: commands.Bot = client
-        self.translator = self.client.tree.translator
+        self.translator: WhiteTranslator = self.client.tree.translator
         self.post_schedule.start()
 
     @tasks.loop(minutes=1)
@@ -39,10 +49,7 @@ class Schedule(commands.Cog):
                     color=discord.Color.blue(),
                     timestamp=datetime.fromtimestamp(next_post, tz=timezone.utc),
                     image=message.image,
-                    author=EmbedAuthor(
-                        name=self.client.user.name,
-                        icon_url=self.client.user.display_avatar.url,
-                    ),
+                    thumbnail=self.client.user.display_avatar.url,
                 )
                 content = ""
                 if message.mention:
@@ -106,7 +113,7 @@ class Schedule(commands.Cog):
 
         if not any(unit in interval for unit in ("w", "d", "h", "m")):
             await interaction.response.send_message(
-                await self.translator.translate(
+                await interaction.translate(
                     string=locale_str("schedule_interval_error"),
                     locale=interaction.locale,
                 ),
@@ -127,7 +134,7 @@ class Schedule(commands.Cog):
 
         if initial_datetime < interaction.created_at:
             await interaction.response.send_message(
-                await self.translator.translate(
+                await interaction.translate(
                     string=locale_str("schedule_initialdatetime_error"),
                     locale=interaction.locale,
                 ),
@@ -153,7 +160,7 @@ class Schedule(commands.Cog):
         )
 
         await interaction.response.send_message(
-            content=await self.translator.translate(
+            content=await interaction.translate(
                 locale=interaction.locale, string=locale_str("schedule_success")
             ),
             embed=Embed(
@@ -252,7 +259,7 @@ class Schedule(commands.Cog):
 
         if not schedule:
             await interaction.response.send_message(
-                content=await self.translator.translate(
+                content=await interaction.translate(
                     locale=interaction.locale, string=locale_str("schedule_not_found")
                 )
             )
@@ -261,7 +268,7 @@ class Schedule(commands.Cog):
         schedule.delete_instance()
 
         await interaction.response.send_message(
-            content=await self.translator.translate(
+            content=await interaction.translate(
                 locale=interaction.locale, string=locale_str("schedule_deleted")
             )
         )
@@ -275,11 +282,13 @@ class Schedule(commands.Cog):
         schedule_id=locale_str("schedule_toggle_schedule_id_description")
     )
     async def schedule_toggle(self, interaction: discord.Interaction, schedule_id: int):
-        schedule = Messages.get_or_none(Messages.id == schedule_id)
+        schedule = Messages.get_or_none(
+            Messages.id == schedule_id & Messages.guild_id == interaction.guild.id
+        )
 
         if not schedule:
             await interaction.response.send_message(
-                content=await self.translator.translate(
+                content=await interaction.translate(
                     locale=interaction.locale, string=locale_str("schedule_not_found")
                 )
             )
@@ -289,11 +298,11 @@ class Schedule(commands.Cog):
         schedule.save()
 
         await interaction.response.send_message(
-            content=await self.translator.translate(
+            content=await interaction.translate(
                 locale=interaction.locale,
                 string=locale_str(
                     "schedule_toggled",
-                    active=await self.translator.translate(
+                    active=await interaction.translate(
                         locale=interaction.locale,
                         string=locale_str(
                             "activated" if schedule.is_active else "deactivated"

@@ -1,0 +1,5 @@
+{
+    "command": "/event notification",
+    "title": "Set notifications for event",
+    "description": "Interactive message to set notifications for an event."
+}

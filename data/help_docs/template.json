@@ -1,0 +1,14 @@
+{
+    "command": "",
+    "title": "",
+    "description": "",
+    "options": [
+        {
+            "name": "",
+            "type": "text",
+            "description": "",
+            "required": true
+        }
+
+    ]
+}

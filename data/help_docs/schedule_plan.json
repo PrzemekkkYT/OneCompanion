@@ -1,0 +1,49 @@
+{
+    "command": "/schedule plan",
+    "title": "Schedule new message",
+    "description": "Schedule a new message to be sent at a specific time.",
+    "options": [
+        {
+            "name": "title",
+            "type": "text",
+            "description": "Message title",
+            "required": true
+        },
+        {
+            "name": "interval",
+            "type": "text",
+            "description": "How often should message be resent",
+            "required": true
+        },
+        {
+            "name": "content",
+            "type": "text",
+            "description": "Main content of the message.",
+            "required": false
+        },
+        {
+            "name": "channel",
+            "type": "Channel",
+            "description": "Channel in which the message will be send. If not set, the message just won't be sent",
+            "required": false
+        },
+        {
+            "name": "start",
+            "type": "text",
+            "description": "When the message should be sent.\nAvailable formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`",
+            "required": false
+        },
+        {
+            "name": "image",
+            "type": "text",
+            "description": "Url of image to display",
+            "required": false
+        },
+        {
+            "name": "mention",
+            "type": "Role",
+            "description": "Which role should be notified.",
+            "required": false
+        }
+    ]
+}
