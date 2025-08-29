@@ -6,3 +6,4 @@ onnxruntime
 pillow
 peewee
 requests
+pillow

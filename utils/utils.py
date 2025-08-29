@@ -2,7 +2,7 @@ import logging
 import re
 from colored import fg, attr
 from enum import Enum
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -117,18 +117,14 @@ def interval_str_to_words(time_str: str):
     time_units = {"w": "week", "d": "day", "h": "hour", "m": "minute"}
     output_str = ""
     for t in time:
-        print(t)
         if len(t) < 2:
             continue
         try:
             num = int(t[:-1])
-            print(num)
             unit = t[-1]
-            print(unit)
             output_str = (
                 output_str + f"{num} {time_units[unit]}{'s' if num > 1 else ''} "
             )
-            print(output_str)
         except Exception as e:
             print(e)
             return
@@ -187,6 +183,31 @@ def parse_datetime(datetime_str: str):
             return dt
         except ValueError:
             continue
+
+
+def interval_str_to_timedelta(time_str: str):
+    weeks = days = hours = minutes = 0
+    times = time_str.split(" ")
+
+    for t in times:
+        if len(t) < 2:
+            continue
+        try:
+            num = int(t[:-1])
+            unit = t[-1]
+            if unit == "w":
+                weeks = num
+            if unit == "d":
+                days = num
+            if unit == "h":
+                hours = num
+            if unit == "m":
+                minutes = num
+        except Exception as e:
+            print(e)
+            return
+
+    return timedelta(weeks=weeks, days=days, hours=hours, minutes=minutes)
 
 
 def timestamp(date: datetime):

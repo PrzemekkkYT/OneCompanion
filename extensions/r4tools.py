@@ -40,6 +40,7 @@ class R4Tools(commands.Cog):
             fail = []
 
             async def retry_callback(retry_button_interaction: discord.Interaction):
+                await retry_button_interaction.response.defer()
                 msg = await button_interaction.original_response()
                 await msg.edit(
                     embed=Embed(

@@ -1,7 +1,9 @@
 from datetime import datetime, timezone, timedelta
-from math import ceil
+import io
+import json
 from typing import Optional, Literal
 from peewee import IntegrityError
+from PIL import Image
 
 import discord
 from discord import ui
@@ -17,6 +19,8 @@ from utils.utils import (
     from_interval,
     small_traceback,
     interval_str_to_words,
+    parse_datetime,
+    interval_str_to_timedelta,
 )
 from utils.whitecord import LVPagination, LVPage, Select, Button
 
@@ -85,6 +89,9 @@ class ScheduledEvents(commands.Cog):
     async def on_scheduled_event_update(
         self, before: discord.ScheduledEvent, after: discord.ScheduledEvent
     ):
+        if before.cover_image != after.cover_image:
+            await after.cover_image.save(f"data/event_templates/images/{after.id}.png")
+
         if after.status in [discord.EventStatus.completed, discord.EventStatus.ended]:
             # print(f"Event {after.name} completed")
 
@@ -226,16 +233,7 @@ class ScheduledEvents(commands.Cog):
             )
             return
 
-        async def on_page_timeout():
-            try:
-                await interaction.delete_original_response()
-                await interaction.followup.send(content="The pagination has timed out.")
-            except:
-                pass
-
-        pagination = LVPagination(
-            pages=pages, interaction=interaction, on_timeout=on_page_timeout
-        )
+        pagination = LVPagination(pages=pages, interaction=interaction)
         await pagination.send_paginator()
 
     @events_group.command()
@@ -299,16 +297,7 @@ class ScheduledEvents(commands.Cog):
             )
             return
 
-        async def on_page_timeout():
-            try:
-                await interaction.delete_original_response()
-                await interaction.followup.send(content="The pagination has timed out.")
-            except:
-                pass
-
-        pagination = LVPagination(
-            pages=pages, interaction=interaction, on_timeout=on_page_timeout
-        )
+        pagination = LVPagination(pages=pages, interaction=interaction)
         await pagination.send_paginator()
 
     @events_group.command()
@@ -324,10 +313,48 @@ class ScheduledEvents(commands.Cog):
             "crazy_joe",
             "mercenary_prestige",
         ],
-        datetime: str,
-        info: str,
+        start_datetime: str,
+        legion: int = None,
     ):
-        pass
+        start = parse_datetime(start_datetime)
+        if not start:
+            await interaction.response.send_message("Wrong datetime string")
+            return
+
+        with open(f"data/event_templates/{template}.json") as f:
+            data = json.load(f)
+
+            if "{num}" in data["title"] and not legion:
+                await interaction.response.send_message("Set the legion value!")
+                return
+
+            img = Image.open(f"data/event_templates/images/{data['image']}")
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format="PNG")
+            img_byte_arr = img_byte_arr.getvalue()
+
+            title = (
+                data["title"].replace("{num}", str(legion)) if legion else data["title"]
+            )
+
+            try:
+                await interaction.guild.create_scheduled_event(
+                    name=title,
+                    location=data["location"],
+                    description=data["description"],
+                    start_time=start,
+                    end_time=start + interval_str_to_timedelta(data["duration"]),
+                    entity_type=discord.EntityType.external,
+                    privacy_level=discord.PrivacyLevel.guild_only,
+                    image=img_byte_arr,
+                )
+                await interaction.response.send_message(
+                    f"Event {title} has been successfully created!"
+                )
+            except Exception as e:
+                await interaction.response.send_message(
+                    f"Event {title} couldn't be created.\nReason: {e}"
+                )
 
 
 class ReminderOffsetSetter(ui.LayoutView):
