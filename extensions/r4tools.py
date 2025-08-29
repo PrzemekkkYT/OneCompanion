@@ -19,14 +19,16 @@ class R4Tools(commands.Cog):
 
     @app_commands.command()
     async def mass_redeem(
-        self, interaction: discord.Interaction, code: str, ids_range: str
+        self, interaction: discord.Interaction, code: str, ids_range: str = "0-100"
     ):
         with open("data/ids.json") as f:
             ids = json.load(f)
         # Redeem the code for each ID
         onnx, metadata = load_model()
-        self.start = ids_range.split("-")[0]
-        self.end = ids_range.split("-")[1]
+        self.start = int(ids_range.split("-")[0])
+        self.end = int(ids_range.split("-")[1])
+
+        player_num = self.end - self.start - 1
 
         async def cancel_callback(button_interaction: discord.Interaction):
             await button_interaction.delete_original_response()
@@ -93,11 +95,11 @@ class R4Tools(commands.Cog):
                     title="Mass Redeem - Starting",
                     description=f"""
                     Code: `{code}`
-                    Included accounts: {len(ids)}
+                    Included accounts: {player_num}
                     ━━━━━━━━━━━━━━━━━━━━━━
-                    ✅ 0 / {len(ids)} Success
-                    ❗ 0 / {len(ids)} Already Redeemed
-                    ❌ 0 / {len(ids)} Fail
+                    ✅ 0 / {player_num} Success
+                    ❗ 0 / {player_num} Already Redeemed
+                    ❌ 0 / {player_num} Fail
                     ━━━━━━━━━━━━━━━━━━━━━━
                     """,
                     color=0x00FF00,
@@ -132,11 +134,11 @@ class R4Tools(commands.Cog):
                     title="Mass Redeem - Finished",
                     description=f"""
                     Code: `{code}`
-                    Included accounts: {len(ids)}
+                    Included accounts: {player_num}
                     ━━━━━━━━━━━━━━━━━━━━━━
-                    ✅ {len(success)} / {len(ids)} Success
-                    ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-                    ❌ {len(fail)} / {len(ids)} Fail
+                    ✅ {len(success)} / {player_num} Success
+                    ❗ {len(already_redeemed)} / {player_num} Already Redeemed
+                    ❌ {len(fail)} / {player_num} Fail
                     ━━━━━━━━━━━━━━━━━━━━━━
                     { '**Failed multiple times, please try again later for successful redeem.**' if fail else '**All accounts have been successfully redeemed!**' }
                     """,
@@ -174,7 +176,7 @@ class R4Tools(commands.Cog):
                 title="Mass Redeem - Starting",
                 description=f"""
                 Code: `{code}`
-                Included accounts: {len(ids)}
+                Included accounts: {player_num}
                 Start Mass Redeem?
                 """,
                 color=0x00FF00,

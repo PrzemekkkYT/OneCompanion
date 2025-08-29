@@ -52,7 +52,7 @@ class ScheduledEvents(commands.Cog):
                     continue
                 lowest_noti_diff = min(noti_diffs.items(), key=lambda x: x[1])
                 # lowest_noti_diff is a tuple (noti_value, diff)
-                if lowest_noti_diff[1] < 50:
+                if lowest_noti_diff[1] < 30:
                     channel = guild.get_channel(notification.channel_id)
                     if notification.role_id:
                         if notification.role_id != guild.id:
