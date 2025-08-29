@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import requests
@@ -192,6 +193,8 @@ class R4Tools(commands.Cog):
         already_redeemed = []
         fail = []
 
+        player_num = end - start
+
         for player_id in ids[start:end]:
             gift_code_redeemer = GiftCodeRedeemer(
                 player_id=player_id,
@@ -217,11 +220,11 @@ class R4Tools(commands.Cog):
                         title="Mass Redeem - Executing...",
                         description=f"""
                         Code: `{code}`
-                        Included accounts: {len(ids)}
+                        Included accounts: {player_num}
                         ━━━━━━━━━━━━━━━━━━━━━━
-                        ✅ {len(success)} / {len(ids)} Success
-                        ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-                        ❌ {len(fail)} / {len(ids)} Fail
+                        ✅ {len(success)} / {player_num} Success
+                        ❗ {len(already_redeemed)} / {player_num} Already Redeemed
+                        ❌ {len(fail)} / {player_num} Fail
                         ━━━━━━━━━━━━━━━━━━━━━━
                         """,
                         color=0x00FF00,
@@ -247,6 +250,8 @@ class R4Tools(commands.Cog):
                         timestamp=datetime.now(timezone.utc),
                     )
                 )
+            # Wait a few seconds before continuing to the next iteration
+            await asyncio.sleep(2)
 
         return success, already_redeemed, fail
 
