@@ -27,7 +27,9 @@ class Help(commands.Cog):
             "schedule delete",
             "squads",
             "mass_redeem" "event/notification",
+            "event/notification",
             "event/recurrence",
+            "event/create",
         ],
     ):
         with open(

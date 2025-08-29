@@ -8,7 +8,18 @@
             "type": "choice",
             "description": "One of available predefined templates to create an event.",
             "required": true
+        },
+        {
+            "name": "start_datetime",
+            "type": "text",
+            "description": "When the event should start\nAvailable formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`",
+            "required": true
+        },
+        {
+            "name": "legion",
+            "type": "number",
+            "description": "Number of legion or fortress/stronghold",
+            "required": false
         }
-
     ]
 }
