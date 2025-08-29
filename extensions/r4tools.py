@@ -2,6 +2,7 @@ import hashlib
 import json
 import requests
 from datetime import datetime, timezone
+from time import sleep
 
 import discord
 from discord import app_commands
@@ -179,61 +180,63 @@ class R4Tools(commands.Cog):
         already_redeemed = []
         fail = []
 
-        for player_id in ids:
-            gift_code_redeemer = GiftCodeRedeemer(
-                player_id=player_id,
-                giftcode=code,
-                onnx_session=onnx,
-                onnx_metadata=metadata,
-            )
-            err_code, msg = gift_code_redeemer.redeem_gift_code()
-
-            if err_code == 20000:
-                success.append(player_id)
-            elif err_code == 40008:
-                already_redeemed.append(player_id)
-            else:
-                fail.append(player_id)
-
-            interaction_message = await interaction.original_response()
-            if not retry:
-                await interaction_message.edit(
-                    embed=Embed(
-                        translator=self.translator,
-                        locale=interaction.locale,
-                        title="Mass Redeem - Executing...",
-                        description=f"""
-                        Code: `{code}`
-                        Included accounts: {len(ids)}
-                        ━━━━━━━━━━━━━━━━━━━━━━
-                        ✅ {len(success)} / {len(ids)} Success
-                        ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-                        ❌ {len(fail)} / {len(ids)} Fail
-                        ━━━━━━━━━━━━━━━━━━━━━━
-                        """,
-                        color=0x00FF00,
-                        timestamp=datetime.now(timezone.utc),
-                    )
+        for i in range(0, 100, 10):
+            for player_id in ids[i : i + 9]:
+                gift_code_redeemer = GiftCodeRedeemer(
+                    player_id=player_id,
+                    giftcode=code,
+                    onnx_session=onnx,
+                    onnx_metadata=metadata,
                 )
-            else:
-                await interaction_message.edit(
-                    embed=Embed(
-                        translator=self.translator,
-                        locale=interaction.locale,
-                        title="Mass Redeem - Retrying...",
-                        description=f"""
-                        Code: `{code}`
-                        Included accounts: {len(ids)}
-                        ━━━━━━━━━━━━━━━━━━━━━━
-                        ✅ {len(success)} / {len(ids)} Success
-                        ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-                        ❌ {len(fail)} / {len(ids)} Fail
-                        ━━━━━━━━━━━━━━━━━━━━━━
-                        """,
-                        color=0x00FF00,
-                        timestamp=datetime.now(timezone.utc),
+                err_code, msg = gift_code_redeemer.redeem_gift_code()
+
+                if err_code == 20000:
+                    success.append(player_id)
+                elif err_code == 40008:
+                    already_redeemed.append(player_id)
+                else:
+                    fail.append(player_id)
+
+                interaction_message = await interaction.original_response()
+                if not retry:
+                    await interaction_message.edit(
+                        embed=Embed(
+                            translator=self.translator,
+                            locale=interaction.locale,
+                            title="Mass Redeem - Executing...",
+                            description=f"""
+                            Code: `{code}`
+                            Included accounts: {len(ids)}
+                            ━━━━━━━━━━━━━━━━━━━━━━
+                            ✅ {len(success)} / {len(ids)} Success
+                            ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
+                            ❌ {len(fail)} / {len(ids)} Fail
+                            ━━━━━━━━━━━━━━━━━━━━━━
+                            """,
+                            color=0x00FF00,
+                            timestamp=datetime.now(timezone.utc),
+                        )
                     )
-                )
+                else:
+                    await interaction_message.edit(
+                        embed=Embed(
+                            translator=self.translator,
+                            locale=interaction.locale,
+                            title="Mass Redeem - Retrying...",
+                            description=f"""
+                            Code: `{code}`
+                            Included accounts: {len(ids)}
+                            ━━━━━━━━━━━━━━━━━━━━━━
+                            ✅ {len(success)} / {len(ids)} Success
+                            ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
+                            ❌ {len(fail)} / {len(ids)} Fail
+                            ━━━━━━━━━━━━━━━━━━━━━━
+                            """,
+                            color=0x00FF00,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                    )
+            sleep(60)
 
         return success, already_redeemed, fail
 
