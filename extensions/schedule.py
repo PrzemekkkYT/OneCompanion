@@ -135,6 +135,7 @@ class Schedule(commands.Cog):
                 await interaction.response.send_message(
                     "start time couldn't be parsed.\nUse any of those formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`"
                 )
+                return
             next_post = (
                 timestamp(initial_datetime)
                 if initial_datetime > datetime.now(tz=timezone.utc)

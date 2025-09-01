@@ -1,7 +1,7 @@
 {
     "command": "/event create",
     "title": "Create event",
-    "description": "COMMAND IN THE MAKING! DON'T USE!!!\nCreate an event from the template",
+    "description": "Create an event from the template",
     "options": [
         {
             "name": "template",
