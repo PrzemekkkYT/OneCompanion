@@ -1,25 +1,50 @@
 import logging
-import re
+from logging import handlers
 from colored import fg, attr
 from enum import Enum
 from datetime import datetime, timezone, timedelta
+import traceback
 
 logger = logging.getLogger(__name__)
+
+KILOBYTE = 1024
+MEGABYTE = 1024 * 1024
+
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    # handler = logging.FileHandler(log_file, encoding="utf-8")
+    handler = handlers.RotatingFileHandler(
+        log_file, maxBytes=20 * KILOBYTE, backupCount=5
+    )
+    handler.setFormatter(formatter)
+
+    streamhandler = logging.StreamHandler()
+    streamhandler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    logger.addHandler(streamhandler)
+
+    return logger
 
 
 def pretty_traceback(error: BaseException, comment=""):
     file = error.__traceback__.tb_frame.f_code.co_filename
     line = error.__traceback__.tb_lineno
-    # tb = "".join(traceback.format_exception_only(error))
-    tb = str(error.__class__).replace("<class '", "").replace("'>", "")
+    tb_str = "".join(
+        traceback.format_exception(type(error), error, error.__traceback__)
+    )
     output = (
         f"{fg('red_1')}Error in {fg('red')}{file}{fg('red_1')} on line "
-        f"{fg('red')}{line}{fg('red_1')}:\n  {tb}: {fg('red')}{error}{attr('reset')}"
+        f"{fg('red')}{line}{fg('red_1')}:\n{fg('red')}{tb_str}{attr('reset')}"
     )
     if comment != "":
-        output = (
-            output
-            + f"\n{fg('blue_1')}Additional comment: {fg('blue')}{comment}{attr('reset')}"
+        output += (
+            f"\n{fg('blue_1')}Additional comment: {fg('blue')}{comment}{attr('reset')}"
         )
     return output
 

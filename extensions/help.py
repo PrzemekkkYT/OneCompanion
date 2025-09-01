@@ -26,10 +26,10 @@ class Help(commands.Cog):
             "schedule toggle",
             "schedule delete",
             "squads",
-            "mass_redeem" "event/notification",
-            "event/notification",
-            "event/recurrence",
-            "event/create",
+            "redeemer",
+            "event notification",
+            "event recurrence",
+            "event create",
         ],
     ):
         with open(
@@ -50,6 +50,19 @@ class Help(commands.Cog):
                         "\n".join(
                             [
                                 f"**{option['name']}** ({option['type']}) {'**Required**' if option['required'] else ''}\n└Description: {option['description']}"
+                                + (
+                                    f"\n└Formats: "
+                                    + ", ".join(
+                                        [f"`{form}`" for form in option["formats"]]
+                                    )
+                                    if "formats" in option
+                                    else ""
+                                )
+                                + (
+                                    f"\n└Format: `{option['format']}`"
+                                    if "format" in option
+                                    else ""
+                                )
                                 for option in help_data["options"]
                             ]
                         )

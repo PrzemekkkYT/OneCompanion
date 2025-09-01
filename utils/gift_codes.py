@@ -7,6 +7,7 @@ from PIL import Image
 import json
 import io
 import os
+from requests.adapters import HTTPAdapter, Retry
 
 import requests
 
@@ -144,6 +145,7 @@ class GiftCodeRedeemer:
         onnx_metadata,
     ):
         sess, si = self.get_stove_info(player_id)
+        # print(si)
 
         if si:
             self.req_session, self.stove_info = sess, si
@@ -163,6 +165,18 @@ class GiftCodeRedeemer:
 
     def get_stove_info(self, player_id: int):
         session = requests.Session()
+        session.mount(
+            "https://",
+            HTTPAdapter(
+                max_retries=Retry(
+                    total=5,
+                    backoff_factor=0.5,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    allowed_methods=["POST", "GET"],
+                )
+            ),
+        )
+
         headers = {
             "accept": "application/json, text/plain, */*",
             "content-type": "application/x-www-form-urlencoded",
@@ -192,4 +206,10 @@ class GiftCodeRedeemer:
         data = encode_data(data_to_encode)
         response_giftcode = self.req_session.post(wos_giftcode_url, data=data).json()
         self.req_session.close()
-        return response_giftcode.get("err_code", 0), response_giftcode.get("msg", "")
+        return {
+            "request": {
+                "err_code": response_giftcode.get("err_code", 0),
+                "msg": response_giftcode.get("msg", ""),
+            },
+            "player": self.stove_info.get("data", {}),
+        }

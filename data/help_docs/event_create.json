@@ -12,8 +12,16 @@
         {
             "name": "start_datetime",
             "type": "text",
-            "description": "When the event should start\nAvailable formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`",
-            "required": true
+            "description": "When the event should start",
+            "required": true,
+            "formats": [
+                "hh:mm",
+                "dd/mm hh:mm",
+                "yyyy-mm-dd hh:mm",
+                "dd.mm.yyyy hh:mm",
+                "yyyy-mm-dd",
+                "dd.mm.yyyy"
+            ]
         },
         {
             "name": "legion",

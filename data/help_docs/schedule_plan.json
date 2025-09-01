@@ -13,7 +13,8 @@
             "name": "interval",
             "type": "text",
             "description": "How often should message be resent",
-            "required": true
+            "required": true,
+            "format": "1w 2d 3h 4m"
         },
         {
             "name": "content",
@@ -30,8 +31,16 @@
         {
             "name": "start",
             "type": "text",
-            "description": "When the message should be sent.\nAvailable formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`",
-            "required": false
+            "description": "When the message should be sent.",
+            "required": false,
+            "formats": [
+                "hh:mm",
+                "dd/mm hh:mm",
+                "yyyy-mm-dd hh:mm",
+                "dd.mm.yyyy hh:mm",
+                "yyyy-mm-dd",
+                "dd.mm.yyyy"
+            ]
         },
         {
             "name": "image",

@@ -1,9 +1,10 @@
-from datetime import datetime, timezone, timedelta
 import io
 import json
-from typing import Optional, Literal
-from peewee import IntegrityError
+import logging
 from PIL import Image
+from peewee import IntegrityError
+from typing import Optional, Literal
+from datetime import datetime, timezone, timedelta
 
 import discord
 from discord import ui
@@ -21,8 +22,11 @@ from utils.utils import (
     interval_str_to_words,
     parse_datetime,
     interval_str_to_timedelta,
+    setup_logger,
 )
-from utils.whitecord import LVPagination, LVPage, Select, Button
+from utils.whitecord import LVPagination, LVPage, Button
+
+log = setup_logger("scheduledevents", "logs/scheduled_events.log")
 
 
 class ScheduledEvents(commands.Cog):
@@ -30,6 +34,9 @@ class ScheduledEvents(commands.Cog):
         self.client = client
         self.translator = self.client.tree.translator
         self.post_notification.start()
+        log.info(
+            f"Post Notification starts on {datetime.now()} and will work every minute"
+        )
 
     @tasks.loop(minutes=1)
     async def post_notification(self):
@@ -56,7 +63,7 @@ class ScheduledEvents(commands.Cog):
                     continue
                 lowest_noti_diff = min(noti_diffs.items(), key=lambda x: x[1])
                 # lowest_noti_diff is a tuple (noti_value, diff)
-                if lowest_noti_diff[1] < 30:
+                if lowest_noti_diff[1] <= 30:
                     channel = guild.get_channel(notification.channel_id)
                     if notification.role_id:
                         if notification.role_id != guild.id:
@@ -68,6 +75,9 @@ class ScheduledEvents(commands.Cog):
 
                     interval_str = from_interval(
                         timestamp(event.start_time) - lowest_noti_diff[0]
+                    )
+                    log.info(
+                        f"Sending {event.name} in {channel.name} for guild {guild.name}"
                     )
                     await channel.send(
                         f"{role_mention}\n{event.name} starts in {interval_str_to_words(interval_str)}"
@@ -89,12 +99,7 @@ class ScheduledEvents(commands.Cog):
     async def on_scheduled_event_update(
         self, before: discord.ScheduledEvent, after: discord.ScheduledEvent
     ):
-        if before.cover_image != after.cover_image:
-            await after.cover_image.save(f"data/event_templates/images/{after.id}.png")
-
         if after.status in [discord.EventStatus.completed, discord.EventStatus.ended]:
-            # print(f"Event {after.name} completed")
-
             recurrence: ScheduledEventRecurrence | None = (
                 ScheduledEventRecurrence.get_or_none(event_id=after.id)
             )
@@ -128,6 +133,8 @@ class ScheduledEvents(commands.Cog):
                         ),
                     )
                 )
+
+                before.users
 
                 ScheduledEventRecurrence.update(event_id=new_event.id).where(
                     ScheduledEventRecurrence.event_id == recurrence.event_id
@@ -191,7 +198,7 @@ class ScheduledEvents(commands.Cog):
             event_id = int(button_interaction.data["custom_id"].split("__")[-1])
             selected_event = button_interaction.guild.get_scheduled_event(event_id)
 
-            print(selected_event.id)
+            log.info(selected_event.id)
 
             view = ReminderOffsetSetter(
                 event=selected_event,
@@ -251,13 +258,13 @@ class ScheduledEvents(commands.Cog):
             event_id = int(button_interaction.data["custom_id"].split("__")[-1])
             selected_event = button_interaction.guild.get_scheduled_event(event_id)
 
-            print(selected_event.id)
+            log.info(selected_event.id)
 
             modal = ReminderRecurrenceSetter(interaction, selected_event)
 
             await button_interaction.response.send_modal(modal)
 
-        print([event.id for event in upcoming_events])
+        log.info([event.id for event in upcoming_events])
 
         recurrences_model = ScheduledEventRecurrence.select().where(
             ScheduledEventRecurrence.event_id << [event.id for event in upcoming_events]
@@ -452,7 +459,7 @@ class ReminderOffsetSetter(ui.LayoutView):
                 content="The reminder configuration has timed out."
             )
         except Exception as e:
-            print(f"Error editing response: {e}")
+            log.info(f"Error editing response: {e}")
 
     async def update_view(
         self,
@@ -672,7 +679,7 @@ class ReminderOffsetModal(ui.Modal):
                 self.button.style = discord.ButtonStyle.primary
                 self.button.label = _offset
 
-        print(self.actionrow.view.selected_reminders)
+        log.info(self.actionrow.view.selected_reminders)
         await self.actionrow.view.update_view(offset_buttons=self.actionrow)
 
 
@@ -693,8 +700,8 @@ class ReminderOffsetControlButtons(ui.ActionRow):
         await button_interaction.response.defer()
         event_starttime = timestamp(self.__view.event.start_time)
 
-        # print(f"{self.__view.guild_channel_select.values=}")
-        # print(f"{self.__view.guild_role_select.values=}")
+        # log.info(f"{self.__view.guild_channel_select.values=}")
+        # log.info(f"{self.__view.guild_role_select.values=}")
 
         if not self.__view.selected_channel:
             await self.__view.set_error("Please select a channel.")
@@ -778,7 +785,7 @@ class ReminderOffsetControlButtons(ui.ActionRow):
                 ),
             )
             notification.save()
-            print(
+            log.info(
                 f"Set reminders for event {self.__view.event.name} ({self.__view.event.id}) in guild {self.__interaction.guild.name} ({self.__interaction.guild.id})\n"
                 + ", ".join(
                     [
@@ -829,7 +836,7 @@ class ReminderOffsetControlButtons(ui.ActionRow):
         self, button_interaction: discord.Interaction, button: discord.ui.Button
     ):
         await button_interaction.response.defer()
-        print("Cancelling reminders")
+        log.info("Cancelling reminders")
         await self.__interaction.delete_original_response()
         await self.__interaction.followup.send(
             "Reminders config cancelled.", ephemeral=True
@@ -845,7 +852,7 @@ class ReminderChannelSelect:
 
             async def callback(self, button_interaction: discord.Interaction):
                 await button_interaction.response.defer()
-                print("Resetting channel selection")
+                log.info("Resetting channel selection")
                 await self.__parent.parent.reset_selection()
 
         @property
@@ -872,7 +879,7 @@ class ReminderChannelSelect:
                 channel = select_interaction.guild.get_channel(
                     int(select_interaction.data["values"][0])
                 )
-                print(channel.mention)
+                log.info(channel.mention)
                 await self.__parent.select_channel(channel)
 
         def __init__(self, parent: "ReminderChannelSelect"):
@@ -915,7 +922,7 @@ class ReminderRoleSelect:
 
             async def callback(self, button_interaction: discord.Interaction):
                 await button_interaction.response.defer()
-                print("Resetting role selection")
+                log.info("Resetting role selection")
                 await self.__parent.parent.reset_selection()
 
         @property

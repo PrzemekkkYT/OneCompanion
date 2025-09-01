@@ -1,25 +1,30 @@
-from datetime import datetime, timezone
-from typing import Optional
+import logging
 from math import ceil
+from typing import Optional
+from datetime import datetime, timezone
 
 import discord
-from discord import ButtonStyle, ScheduledEvent, app_commands, TextChannel
+from discord import app_commands, TextChannel
 from discord.ext import commands, tasks
 from discord.app_commands import locale_str
 
 from orms.schedules import Messages, ScheduledForToday
-from utils.utils import parse_datetime, parse_interval, timestamp, from_interval
+from utils.utils import (
+    parse_datetime,
+    parse_interval,
+    timestamp,
+    from_interval,
+    setup_logger,
+)
 from utils.whitecord import (
     Embed,
     EmbedField,
-    EmbedAuthor,
     Pagination,
     Page,
-    Select,
-    View,
-    Button,
 )
 from utils.translator import WhiteTranslator
+
+log = setup_logger("schedule", "logs/schedules.log")
 
 
 class Schedule(commands.Cog):
@@ -126,6 +131,10 @@ class Schedule(commands.Cog):
             next_post = timestamp(initial_datetime) + parse_interval(interval)
         else:
             initial_datetime = parse_datetime(initial_datetime_str)
+            if not initial_datetime:
+                await interaction.response.send_message(
+                    "start time couldn't be parsed.\nUse any of those formats: `hh:mm`, `dd/mm hh:mm`, `yyyy-mm-dd hh:mm`, `dd.mm.yyyy hh:mm`, `yyyy-mm-dd`, `dd.mm.yyyy`"
+                )
             next_post = (
                 timestamp(initial_datetime)
                 if initial_datetime > datetime.now(tz=timezone.utc)
@@ -218,12 +227,14 @@ class Schedule(commands.Cog):
                     thumbnail=self.client.user.display_avatar.url,
                     fields=[
                         EmbedField(
-                            name=(
-                                f"{schedule.title} | {schedule.id}"
-                                if show_ids
-                                else schedule.title
+                            name=schedule.title,
+                            value=(
+                                (f"• ID: {str(schedule.id)}\n" if show_ids else "")
+                                + f"• Next post: <t:{schedule.next_post}:f>\n"
+                                + f"• Every: {from_interval(schedule.interval)}\n"
+                                + f"• Channel: <#{schedule.channel_id}>\n"
+                                + f"• Active: {'Yes' if schedule.is_active else 'No'}"
                             ),
-                            value=f"• Next post: <t:{schedule.next_post}:f>\n•Every: {from_interval(schedule.interval)}\n•Channel: <#{schedule.channel_id}>\nActive: {'Yes' if schedule.is_active else 'No'}",
                             inline=False,
                         )
                         for schedule in schedules[i * 5 : (i + 1) * 5]
@@ -255,7 +266,9 @@ class Schedule(commands.Cog):
         schedule_id=locale_str("schedule_delete_schedule_id_description")
     )
     async def schedule_delete(self, interaction: discord.Interaction, schedule_id: int):
-        schedule = Messages.get_or_none(Messages.id == schedule_id)
+        schedule = Messages.get_or_none(
+            (Messages.id == schedule_id) & (Messages.guild_id == interaction.guild.id)
+        )
 
         if not schedule:
             await interaction.response.send_message(
@@ -283,7 +296,7 @@ class Schedule(commands.Cog):
     )
     async def schedule_toggle(self, interaction: discord.Interaction, schedule_id: int):
         schedule = Messages.get_or_none(
-            Messages.id == schedule_id & Messages.guild_id == interaction.guild.id
+            (Messages.id == schedule_id) & (Messages.guild_id == interaction.guild.id)
         )
 
         if not schedule:

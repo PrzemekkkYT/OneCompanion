@@ -5,7 +5,15 @@ import os
 from pathlib import Path
 import random
 
-# from watchdog.observers import Observer
+try:
+    from watchdog.observers import Observer
+    from utils.cog_watcher import CogReloader
+
+    # raise
+
+    COG_WATCHER_AVAILABLE = 1
+except:
+    COG_WATCHER_AVAILABLE = 0
 
 import discord
 from discord.ext import commands, tasks
@@ -13,7 +21,6 @@ from typing import Literal
 
 from utils.whitecord import Embed, EmbedField
 from utils.translator import WhiteTranslator
-from utils.cog_watcher import CogReloader
 from utils.utils import pretty_traceback
 
 logger = logging.getLogger("discord")
@@ -107,16 +114,19 @@ if __name__ == "__main__":
     intents = discord.Intents.all()
     client = MyClient(intents=intents)
 
-    # observer = Observer()
-    # observer.schedule(CogReloader(client), "./extensions", recursive=False)
-    # observer.start()
+    if COG_WATCHER_AVAILABLE:
+        observer = Observer()
+        observer.schedule(CogReloader(client), "./extensions", recursive=False)
+        observer.start()
 
-    client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-    # try:
-    #     client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-    # finally:
-    #     observer.stop()
-    #     observer.join()
+        # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+        try:
+            client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+        finally:
+            observer.stop()
+            observer.join()
+    else:
+        client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
 
 
 @client.command()
