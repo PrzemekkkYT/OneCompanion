@@ -214,6 +214,10 @@ class Schedule(commands.Cog):
             Messages.guild_id == interaction.guild.id,
         )
 
+        if not schedules:
+            await interaction.response.send_message("No events scheduled at the moment")
+            return
+
         pages = []
 
         for i in range(ceil(len(schedules) / 5)):
