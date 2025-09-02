@@ -1,6 +1,6 @@
 {
-    "command": "/mass_redeem",
-    "title": "Mass redeem",
+    "command": "/redeemer",
+    "title": "Redeemer",
     "description": "Redeem gift code for everyone in the alliance :)\nCurrently hardcoded list, later will be interactive or something.",
     "options": [
         {
