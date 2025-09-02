@@ -13,7 +13,7 @@
             "name": "ids_source",
             "type": "text",
             "description": "Source of ids. Either a link to raw json file or pasted list. **IDs in list need to be an integer!**",
-            "required": true,
+            "required": false,
             "formats": [
                 "http://link.here/ids.json",
                 "[382732434, 18374834, ...]"
