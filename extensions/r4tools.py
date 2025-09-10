@@ -17,7 +17,8 @@ from discord.utils import MISSING
 from utils.gift_codes import GiftCodeRedeemer, load_model
 from utils.utils import setup_logger
 
-IDS_FILE = "data/test_ids.json"
+IDS_FILE = "data/ids.json"
+MAX_RETRIES = 5
 
 
 log = setup_logger("r4tools", "logs/r4tools.log")
@@ -172,8 +173,24 @@ class RedeemerView(ui.LayoutView):
                 onnx_session=self.__onnx,
                 onnx_metadata=self.__metadata,
             )
-            redeem_data = gift_code_redeemer.redeem_gift_code()
-            err_code = redeem_data.get("request").get("err_code")
+
+            err_code = 0
+
+            for i in range(MAX_RETRIES):
+
+                redeem_data = gift_code_redeemer.redeem_gift_code()
+                err_code = redeem_data.get("request").get("err_code")
+
+                if err_code in [20000, 40008]:
+                    break
+
+                self.update_view(
+                    error=ui.TextDisplay(f"Retry {i+1}/{MAX_RETRIES} for {player_id}")
+                )
+
+                await asyncio.sleep(1)
+
+            self.update_view(error=None)
 
             match err_code:
                 case 20000:
