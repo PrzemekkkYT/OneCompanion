@@ -51,9 +51,9 @@ class ScheduledEvents(commands.Cog):
                 now_ts = timestamp(datetime.now(tz=timezone.utc))
                 noti_values = [
                     notification.noti_5m,
+                    notification.noti_10m,
                     notification.noti_15m,
                     notification.noti_30m,
-                    notification.noti_1h,
                     notification.noti_custom,
                 ]
 
@@ -94,6 +94,11 @@ class ScheduledEvents(commands.Cog):
         )
         if recurrence:
             recurrence.delete_instance()
+        notification: ScheduledEventNotifications | None = (
+            ScheduledEventNotifications.get_or_none(event_id=event.id)
+        )
+        if notification:
+            notification.delete_instance()
 
     @commands.Cog.listener()
     async def on_scheduled_event_update(
@@ -134,13 +139,11 @@ class ScheduledEvents(commands.Cog):
                     )
                 )
 
-                before.users
-
                 ScheduledEventRecurrence.update(event_id=new_event.id).where(
                     ScheduledEventRecurrence.event_id == recurrence.event_id
                 ).execute()
 
-                notification: ScheduledEventNotifications = (
+                notification: ScheduledEventNotifications | None = (
                     ScheduledEventNotifications.get_or_none(event_id=after.id)
                 )
 
@@ -152,31 +155,41 @@ class ScheduledEvents(commands.Cog):
                         else None
                     )
 
-                    notification.event_id = new_event.id
-                    notification.event_time = new_event_starttime
-                    notification.noti_5m = (
-                        new_event_starttime - parse_interval("5m")
-                        if notification.noti_5m
-                        else None
-                    )
-                    notification.noti_15m = (
-                        new_event_starttime - parse_interval("15m")
-                        if notification.noti_15m
-                        else None
-                    )
-                    notification.noti_30m = (
-                        new_event_starttime - parse_interval("30m")
-                        if notification.noti_30m
-                        else None
-                    )
-                    notification.noti_1h = (
-                        new_event_starttime - parse_interval("1h")
-                        if notification.noti_1h
-                        else None
-                    )
-                    notification.noti_custom = (
-                        new_event_starttime - noti_custom_interval
-                    )
+                    ScheduledEventNotifications.update(
+                        event_id=new_event.id,
+                        event_time=new_event_starttime,
+                        noti_5m=(
+                            new_event_starttime - parse_interval("5m")
+                            if notification.noti_5m
+                            else None
+                        ),
+                        noti_10m=(
+                            new_event_starttime - parse_interval("10m")
+                            if notification.noti_10m
+                            else None
+                        ),
+                        noti_15m=(
+                            new_event_starttime - parse_interval("15m")
+                            if notification.noti_15m
+                            else None
+                        ),
+                        noti_30m=(
+                            new_event_starttime - parse_interval("30m")
+                            if notification.noti_30m
+                            else None
+                        ),
+                        noti_custom=(
+                            new_event_starttime - noti_custom_interval
+                            if noti_custom_interval
+                            else None
+                        ),
+                    ).where(ScheduledEventNotifications.event_id == after.id).execute()
+            else:
+                notification: ScheduledEventNotifications | None = (
+                    ScheduledEventNotifications.get_or_none(event_id=after.id)
+                )
+                if notification:
+                    notification.delete_instance()
 
     events_group = app_commands.Group(
         name="event", description=locale_str("event_description")
@@ -397,7 +410,6 @@ class ReminderOffsetSetter(ui.LayoutView):
             "10m": False,
             "15m": False,
             "30m": False,
-            "1h": False,
             "Custom": 0,
         }
 
@@ -566,9 +578,9 @@ class ReminderOffsetButtons(ui.ActionRow):
         # )
 
         noti_5m = existing_notification.noti_5m if existing_notification else None
+        noti_10m = existing_notification.noti_10m if existing_notification else None
         noti_15m = existing_notification.noti_15m if existing_notification else None
         noti_30m = existing_notification.noti_30m if existing_notification else None
-        noti_1h = existing_notification.noti_1h if existing_notification else None
         custom_interval = (
             existing_notification.noti_custom if existing_notification else None
         )
@@ -579,9 +591,9 @@ class ReminderOffsetButtons(ui.ActionRow):
         )
 
         self.__view.selected_reminders["5m"] = bool(noti_5m)
+        self.__view.selected_reminders["10m"] = bool(noti_10m)
         self.__view.selected_reminders["15m"] = bool(noti_15m)
         self.__view.selected_reminders["30m"] = bool(noti_30m)
-        self.__view.selected_reminders["1h"] = bool(noti_1h)
         self.__view.selected_reminders["Custom"] = custom if custom else 0
 
         # TODO
@@ -594,6 +606,16 @@ class ReminderOffsetButtons(ui.ActionRow):
                 style=(
                     discord.ButtonStyle.primary
                     if noti_5m
+                    else discord.ButtonStyle.secondary
+                ),
+            ),
+            self.ReminderOffsetButton(
+                self,
+                label="10m",
+                custom_id="event_remind_10m",
+                style=(
+                    discord.ButtonStyle.primary
+                    if noti_10m
                     else discord.ButtonStyle.secondary
                 ),
             ),
@@ -614,16 +636,6 @@ class ReminderOffsetButtons(ui.ActionRow):
                 style=(
                     discord.ButtonStyle.primary
                     if noti_30m
-                    else discord.ButtonStyle.secondary
-                ),
-            ),
-            self.ReminderOffsetButton(
-                self,
-                label="1h",
-                custom_id="event_remind_1h",
-                style=(
-                    discord.ButtonStyle.primary
-                    if noti_1h
                     else discord.ButtonStyle.secondary
                 ),
             ),
@@ -725,6 +737,11 @@ class ReminderOffsetControlButtons(ui.ActionRow):
                 if self.__view.selected_reminders["5m"]
                 else None
             )
+            notification.noti_10m = (
+                event_starttime - parse_interval("10m")
+                if self.__view.selected_reminders["10m"]
+                else None
+            )
             notification.noti_15m = (
                 event_starttime - parse_interval("15m")
                 if self.__view.selected_reminders["15m"]
@@ -735,11 +752,6 @@ class ReminderOffsetControlButtons(ui.ActionRow):
                 if self.__view.selected_reminders["30m"]
                 else None
             )
-            notification.noti_1h = (
-                event_starttime - parse_interval("1h")
-                if self.__view.selected_reminders["1h"]
-                else None
-            )
             notification.noti_custom = (
                 event_starttime
                 - parse_interval(self.__view.selected_reminders["Custom"])
@@ -748,7 +760,6 @@ class ReminderOffsetControlButtons(ui.ActionRow):
             )
             notification.save()
         else:
-
             notification = ScheduledEventNotifications.create(
                 event_id=self.__view.event.id,
                 guild_id=self.__interaction.guild.id,
@@ -762,6 +773,11 @@ class ReminderOffsetControlButtons(ui.ActionRow):
                     if self.__view.selected_reminders["5m"]
                     else None
                 ),
+                noti_10m=(
+                    event_starttime - parse_interval("10m")
+                    if self.__view.selected_reminders["10m"]
+                    else None
+                ),
                 noti_15m=(
                     event_starttime - parse_interval("15m")
                     if self.__view.selected_reminders["15m"]
@@ -770,11 +786,6 @@ class ReminderOffsetControlButtons(ui.ActionRow):
                 noti_30m=(
                     event_starttime - parse_interval("30m")
                     if self.__view.selected_reminders["30m"]
-                    else None
-                ),
-                noti_1h=(
-                    event_starttime - parse_interval("1h")
-                    if self.__view.selected_reminders["1h"]
                     else None
                 ),
                 noti_custom=(

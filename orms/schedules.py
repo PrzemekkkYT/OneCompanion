@@ -1,9 +1,9 @@
+from pathlib import Path
 from peewee import (
     SqliteDatabase,
     Model,
     IntegerField,
     TextField,
-    ForeignKeyField,
     BareField,
     AutoField,
 )
@@ -54,9 +54,9 @@ class ScheduledEventNotifications(BaseModel):
     channel_id = IntegerField(null=False)
     role_id = IntegerField(null=True)
     noti_5m = IntegerField(null=True)
+    noti_10m = IntegerField(null=True)
     noti_15m = IntegerField(null=True)
     noti_30m = IntegerField(null=True)
-    noti_1h = IntegerField(null=True)
     noti_custom = IntegerField(null=True)
 
     class Meta:
@@ -81,6 +81,12 @@ class SqliteSequence(BaseModel):
 
 
 if __name__ == "__main__":
+    db_path = Path("./database/schedules.db")
+    if not db_path.is_file():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        db_path.open("w+").close()
+
     Messages.create_table()
+    ScheduledForToday.create_table()
     ScheduledEventNotifications.create_table()
     ScheduledEventRecurrence.create_table()

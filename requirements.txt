@@ -7,3 +7,4 @@ pillow
 peewee
 requests
 pillow
+typing_extensions
