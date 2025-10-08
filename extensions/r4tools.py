@@ -6,6 +6,7 @@ from types import NoneType
 from typing import List, Optional
 import logging
 from logging import StreamHandler
+from jsonc_parser.parser import JsoncParser
 
 import discord
 from discord import ui
@@ -17,7 +18,7 @@ from discord.utils import MISSING
 from utils.gift_codes import GiftCodeRedeemer, load_model
 from utils.utils import setup_logger
 
-IDS_FILE = "data/ids.json"
+IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
 
 
@@ -41,23 +42,22 @@ class R4Tools(commands.Cog):
             if ids_source.startswith("http"):
                 try:
                     req = requests.get(ids_source)
-                    req_data = json.loads(req.content)
+                    req_data = JsoncParser.parse_str(req.content)
                     if isinstance(req_data, list):
                         ids = req_data
                 except:
                     pass
             else:
                 try:
-                    source_data = json.loads(ids_source)
+                    source_data = JsoncParser.parse_str(ids_source)
                     if isinstance(source_data, list):
                         ids = source_data
                 except:
                     pass
         else:
-            with open(IDS_FILE) as f:
-                f_data = json.load(f)
-                if isinstance(f_data, list):
-                    ids = f_data
+            file_data = JsoncParser.parse_file(IDS_FILE)
+            if isinstance(file_data, list):
+                ids = file_data
 
         if not ids:
             await interaction.response.send_message("No IDs found in the given source")
@@ -177,7 +177,6 @@ class RedeemerView(ui.LayoutView):
             err_code = 0
 
             for i in range(MAX_RETRIES):
-
                 redeem_data = gift_code_redeemer.redeem_gift_code()
                 err_code = redeem_data.get("request").get("err_code")
 
@@ -185,7 +184,7 @@ class RedeemerView(ui.LayoutView):
                     break
 
                 self.update_view(
-                    error=ui.TextDisplay(f"Retry {i+1}/{MAX_RETRIES} for {player_id}")
+                    error=ui.TextDisplay(f"Retry {i + 1}/{MAX_RETRIES} for {player_id}")
                 )
 
                 await asyncio.sleep(1)
