@@ -42,7 +42,7 @@ class R4Tools(commands.Cog):
             if ids_source.startswith("http"):
                 try:
                     req = requests.get(ids_source)
-                    req_data = JsoncParser.parse_str(req.content)
+                    req_data = JsoncParser.parse_str(req.text)
                     if isinstance(req_data, list):
                         ids = req_data
                 except:
