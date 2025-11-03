@@ -7,16 +7,27 @@ from datetime import datetime
 from jsonc_parser.parser import JsoncParser
 
 from utils.gift_codes import GiftCodeRedeemer, load_model
-from utils.utils import keys_exists, ReturnType, timestamp, pretty_traceback
+from utils.utils import (
+    keys_exists,
+    ReturnType,
+    timestamp,
+    pretty_traceback,
+    setup_logger,
+)
 
 from orms.giftcodes import GiftCodes, RedeemedCodes
 
-# IDS_FILE = "data/ids.jsonc"
-IDS_FILE = "data/test_ids.json"
+IDS_FILE = "data/ids.jsonc"
+# IDS_FILE = "data/test_ids.json"
 MAX_RETRIES = 5
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
+
+WEBHOOK_ID = "1433947775405654108"
+WEBHOOK_TOKEN = "xbyL7ExBvOCAIMzcwTfHI2C02PTwNokqFfmmioxzmerVoP9uDnBAHeUVwL5qtDud51tr"
+
+log = setup_logger("redeemer", "logs/redeemer.log")
 
 
 def main():
@@ -36,57 +47,61 @@ def main():
                     f"Failed to fetch gift code: {response.status_code} - {response.text}"
                 )
 
-            for gift_code_data in process_response(response):
-                print(gift_code_data)
-                gift_code, start_date = gift_code_data
-                start_timestamp = timestamp(datetime.strptime(start_date, "%d.%m.%Y"))
+            code_lines = process_response(response)
 
-                query = GiftCodes.select().where(
-                    (GiftCodes.code == gift_code)
-                    & (GiftCodes.code_start_timestamp == start_timestamp)
-                )
+            for code_line in code_lines:
+                query = GiftCodes.select().where((GiftCodes.code_line == code_line))
+
                 if not query.exists():
-                    print("==== TESTING VALIDITY ====")
-                    code_valid = test_code_validity(
-                        gift_code=gift_code, start_date=start_date
-                    )
-                    print(gift_code, code_valid)
+                    log.info("==== TESTING VALIDITY ====")
+                    code_valid = test_code_validity(code_line=code_line)
+                    log.info(f"{code_line=} | {code_valid=}")
+
                     if code_valid:
-                        print("==== ADDING CODE TO THE DATABASE ====")
-                        GiftCodes.create(
-                            code=gift_code, code_start_timestamp=start_timestamp
-                        )
+                        log.info("==== ADDING CODE TO THE DATABASE ====")
+                        GiftCodes.create(code_line=code_line)
                     sleep(1)
                 else:
-                    print("Code already exists")
+                    # log.info(f"Code {code_line} already exists")
+                    for gc in query:
+                        if not gc.active:
+                            gc.active = 1
+                            gc.save()
+
+            for gc in GiftCodes.select().where(GiftCodes.active == 1):
+                if gc.code_line not in code_lines:
+                    gc.active = 0
+                    gc.save()
 
     except Exception as e:
         print(pretty_traceback(e))
 
-    print("==== STARTING REDEEMER ====")
+    log.info("==== STARTING REDEEMER ====")
     redeeming_output = start_redeeming(ids_list)
 
-    print("==== SAVING FILE ====")
+    log.info("==== SAVING FILE ====")
     with open("test_redeem.json", "w+") as f:
         json.dump(redeeming_output, f, ensure_ascii=False, indent=4)
 
 
-def process_response(response):
+def process_response(response: requests.Response):
     data = response.json()
     if "codes" not in data:
         raise ValueError("Invalid response format, 'codes' key not found.")
-    valid_codes = []
-    for code_line in data["codes"]:
-        try:
-            code, start_date = code_line.split(" ")
-            valid_codes.append((code, start_date))
-        except Exception as e:
-            print(f"Error processing code line '{code_line}': {e}")
-    return valid_codes
+
+    return data["codes"]
 
 
-def test_code_validity(gift_code: str, start_date: str) -> bool:
+def test_code_validity(code_line: str) -> bool:
+    code_line_split = code_line.split(" ")
+    if len(code_line_split) != 2:
+        log.info("code_line should consist only of gift code and it's starting date")
+        return False
+
+    gift_code, start_date = code_line_split
+
     if datetime.strptime(start_date, "%d.%m.%Y") > datetime.now():
+        log.info(f"Giftcode {gift_code} didn't even start yet")
         return False
 
     onnx_session, metadata = load_model()
@@ -107,7 +122,7 @@ def test_code_validity(gift_code: str, start_date: str) -> bool:
         err_code = keys_exists(redeem_data, ("request", "err_code"), ReturnType.RESULT)
         err_msg = keys_exists(redeem_data, ("request", "msg"), ReturnType.RESULT)
 
-        print(f"{err_code=} | {err_msg=}")
+        log.info(f"{err_code=} | {err_msg=}")
 
         if err_code in [20000, 40008]:
             return True
@@ -115,42 +130,51 @@ def test_code_validity(gift_code: str, start_date: str) -> bool:
         if err_code == 40014:
             break
 
-        sleep(1)
+        sleep(
+            random.uniform(1, 5)
+            if err_code not in [40100, 40101]
+            else random.uniform(20, 40)
+        )
 
     return not (err_code == 40014 or not err_code)
 
 
 def start_redeeming(id_list: List[int]):
-    gift_codes = GiftCodes.select().where(
-        (timestamp(datetime.now()) >= GiftCodes.code_start_timestamp)
-        & (GiftCodes.active == True)
-    )
+    code_entries = GiftCodes.select().where((GiftCodes.active == True))
+
+    code_lines = [code_entry.code_line for code_entry in code_entries]
+
+    send_startbatch_webhook(code_lines, len(id_list))
 
     gift_code_executed = {}
 
-    for gift_code in gift_codes:
-        print(gift_code.code)
-        gift_code_executed[gift_code.code] = execute(id_list, gift_code.code)
+    for code_line in code_lines:
+        log.info(code_line)
+        gift_code_executed[code_line] = execute(id_list, code_line)
 
-        sleep(2)
+        sleep(random.uniform(30, 120))
 
     return gift_code_executed
 
 
-def execute(id_list: List[int], gift_code: str):
+def execute(id_list: List[int], code_line: str):
     onnx_session, metadata = load_model()
+
+    gift_code = code_line.split(" ")[0]
+
+    send_start_webhook(gift_code, len(id_list))
 
     succeed, redeemed, failed = [], [], id_list.copy()
 
-    print(f"{succeed=} | {redeemed=} | {failed=}")
+    log.info(f"{len(succeed)=} | {len(redeemed)=} | {len(failed)=}")
 
     while failed:
         failed_copy = failed.copy()
-        print(failed_copy)
+        log.info(failed_copy)
         for player_id in failed_copy:
             redeemed_for_player = RedeemedCodes.select().where(
                 (RedeemedCodes.player_id == player_id)
-                & (RedeemedCodes.code == gift_code)
+                & (RedeemedCodes.code_line == code_line)
             )
             if not redeemed_for_player.exists():
                 gift_code_redeemer = GiftCodeRedeemer(
@@ -173,32 +197,127 @@ def execute(id_list: List[int], gift_code: str):
                         redeem_data, ("request", "msg"), ReturnType.RESULT
                     )
 
-                    print(f"{gift_code=} | {player_id=} || {err_code=} | {err_msg=}")
+                    log.info(f"{code_line=} | {player_id=} || {err_code=} | {err_msg=}")
 
-                    if err_code == 20000:
+                    if err_code in [20000, 40008, 40011]:
                         failed.remove(player_id)
-                        succeed.append(player_id)
-                        RedeemedCodes.create(code=gift_code, player_id=player_id)
+                        if err_code == 20000:
+                            succeed.append(player_id)
+                        else:
+                            redeemed.append(player_id)
+                        RedeemedCodes.create(code_line=code_line, player_id=player_id)
                         break
 
-                    if err_code == 40008:
-                        failed.remove(player_id)
-                        redeemed.append(player_id)
-                        RedeemedCodes.create(code=gift_code, player_id=player_id)
-                        break
-
-                    print(f"{succeed=} | {redeemed=} | {failed=}")
+                    # log.info(f"{succeed=} | {redeemed=} | {failed=}")
 
                     sleep(
                         random.uniform(1, 5)
-                        if err_code != 40014
+                        if err_code not in [40100, 40101]
                         else random.uniform(20, 40)
                     )
                 sleep(random.uniform(1, 5))
             else:
+                redeemed.append(player_id)
                 failed.remove(player_id)
 
+    send_finish_webhook(
+        gift_code, len(id_list), len(succeed), len(redeemed), len(failed)
+    )
+
     return succeed, redeemed, failed
+
+
+def send_startbatch_webhook(codes, ids_len):
+    formatted_codes = "\n".join([f"└ `{code}`" for code in codes])
+    webhook_data = {
+        "flags": 32768,  # IS_COMPONENTS_V2
+        "username": "One Companion",
+        "avatar_url": "https://cdn.discordapp.com/avatars/1403357392149942292/caaff7835a12e42af80d38415095aa3d.png?size=1024",
+        "components": [
+            {
+                "type": 17,
+                "components": [
+                    {"type": 10, "content": "## Auto Redeem - Starting"},
+                    {
+                        "type": 10,
+                        "content": "Redeemer CronJob found new available and working giftcodes.",
+                    },
+                    {
+                        "type": 10,
+                        "content": f"**Included accounts: {ids_len}\nCodes:\n{formatted_codes}**",
+                    },
+                ],
+            }
+        ],
+    }
+
+    requests.post(
+        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        json=webhook_data,
+        params={"with_components": True},
+    )
+
+
+def send_start_webhook(code, ids_len):
+    webhook_data = {
+        "flags": 32768,  # IS_COMPONENTS_V2
+        "username": "One Companion",
+        "avatar_url": "https://cdn.discordapp.com/avatars/1403357392149942292/caaff7835a12e42af80d38415095aa3d.png?size=1024",
+        "components": [
+            {
+                "type": 17,
+                "components": [
+                    {"type": 10, "content": "## Auto Redeem - Starting"},
+                    {
+                        "type": 10,
+                        "content": f"**Code: `{code}`\nIncluded accounts: {ids_len}**",
+                    },
+                ],
+            }
+        ],
+    }
+
+    requests.post(
+        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        json=webhook_data,
+        params={"with_components": True},
+    )
+
+
+def send_finish_webhook(code, ids_len, succeed_len, redeemed_len, failed_len):
+    webhook_data = {
+        "flags": 32768,  # IS_COMPONENTS_V2
+        "username": "One Companion",
+        "avatar_url": "https://cdn.discordapp.com/avatars/1403357392149942292/caaff7835a12e42af80d38415095aa3d.png?size=1024",
+        "components": [
+            {
+                "type": 17,
+                "components": [
+                    {"type": 10, "content": "## Auto Redeem - Finished"},
+                    {
+                        "type": 10,
+                        "content": f"**Code: `{code}`\nIncluded accounts: {ids_len}**",
+                    },
+                    {
+                        "type": 10,
+                        "content": f"""
+━━━━━━━━━━━━━━━━━━━━━━
+✅ {succeed_len} / {ids_len} Success
+❗ {redeemed_len} / {ids_len} Already Redeemed
+❌ {failed_len} / {ids_len} Fail
+━━━━━━━━━━━━━━━━━━━━━━
+""",
+                    },
+                ],
+            }
+        ],
+    }
+
+    requests.post(
+        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        json=webhook_data,
+        params={"with_components": True},
+    )
 
 
 if __name__ == "__main__":

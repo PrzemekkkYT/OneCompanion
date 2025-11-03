@@ -22,10 +22,10 @@ IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
 
 
-log = setup_logger("r4tools", "logs/r4tools.log")
+log = setup_logger("giftcodes", "logs/giftcodes.log")
 
 
-class R4Tools(commands.Cog):
+class GiftCodes(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.translator = self.client.tree.translator
@@ -416,4 +416,4 @@ class RedeemerFailedButtons(ui.ActionRow):
 
 
 async def setup(client: commands.Bot):
-    await client.add_cog(R4Tools(client))
+    await client.add_cog(GiftCodes(client))

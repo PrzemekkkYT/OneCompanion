@@ -23,8 +23,7 @@ class BaseModel(Model):
 
 class GiftCodes(BaseModel):
     id = AutoField()
-    code = TextField(null=False)
-    code_start_timestamp = IntegerField(null=False)
+    code_line = TextField(null=False)
     active = BooleanField(default=True)
 
     class Meta:
@@ -33,7 +32,7 @@ class GiftCodes(BaseModel):
 
 class RedeemedCodes(BaseModel):
     id = AutoField()
-    code = IntegerField(null=False)
+    code_line = IntegerField(null=False)
     player_id = IntegerField(null=False)
 
     class Meta:
@@ -41,7 +40,7 @@ class RedeemedCodes(BaseModel):
 
 
 if __name__ == "__main__":
-    db_path = Path("./database/configs.db")
+    db_path = Path("./database/giftcodes.db")
     if not db_path.is_file():
         db_path.parent.mkdir(parents=True, exist_ok=True)
         db_path.open("w+").close()
