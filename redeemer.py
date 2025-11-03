@@ -24,8 +24,8 @@ MAX_RETRIES = 5
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
 
-WEBHOOK_ID = "1433947775405654108"
-WEBHOOK_TOKEN = "xbyL7ExBvOCAIMzcwTfHI2C02PTwNokqFfmmioxzmerVoP9uDnBAHeUVwL5qtDud51tr"
+WEBHOOK_ID = "1434898414440550410"
+WEBHOOK_TOKEN = "W-2-v_hqMpgff8NXN9S4WFX-jq0R5tyxvcw2NY_UY4O5ZPEK-yN-_3ReG4itIlfubw6s"
 
 log = setup_logger("redeemer", "logs/redeemer.log")
 
