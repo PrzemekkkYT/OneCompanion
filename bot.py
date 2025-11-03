@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import random
 
+from orms.configs import GuildConfigs
+
 try:
     from watchdog.observers import Observer
     from utils.cog_watcher import CogReloader
@@ -98,8 +100,14 @@ class MyClient(commands.Bot):
 
     async def on_ready(self):
         change_status.start()
+        for guild in self.guilds:
+            init_database_fix(guild.id)
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("========== bot is ready ==========")
+
+
+def init_database_fix(guild_id):
+    GuildConfigs.get_or_create(guild_id=guild_id)
 
 
 @tasks.loop(time=datetime.time(hour=0, minute=0, tzinfo=datetime.timezone.utc))

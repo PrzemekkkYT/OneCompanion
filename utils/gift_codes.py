@@ -205,10 +205,15 @@ class GiftCodeRedeemer:
         }
         data = encode_data(data_to_encode)
         response_giftcode = self.req_session.post(wos_giftcode_url, data=data).json()
-        self.req_session.close()
+
+        err_code = response_giftcode.get("err_code", 0)
+
+        if err_code in [20000, 40008]:
+            self.req_session.close()
+
         return {
             "request": {
-                "err_code": response_giftcode.get("err_code", 0),
+                "err_code": err_code,
                 "msg": response_giftcode.get("msg", ""),
             },
             "player": self.stove_info.get("data", {}),
