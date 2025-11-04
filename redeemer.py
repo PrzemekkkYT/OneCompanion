@@ -17,17 +17,22 @@ from utils.utils import (
 
 from orms.giftcodes import GiftCodes, RedeemedCodes
 
-IDS_FILE = "data/ids.jsonc"
-# IDS_FILE = "data/test_ids.json"
+# IDS_FILE = "data/ids.jsonc"
+IDS_FILE = "data/test_ids.json"
 MAX_RETRIES = 5
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
 
-WEBHOOK_ID = "1434898414440550410"
-WEBHOOK_TOKEN = "W-2-v_hqMpgff8NXN9S4WFX-jq0R5tyxvcw2NY_UY4O5ZPEK-yN-_3ReG4itIlfubw6s"
-
 log = setup_logger("redeemer", "logs/redeemer.log")
+
+
+def load_config():
+    with open("config.json", "r+") as f:
+        return json.load(f)
+
+
+config = load_config()
 
 
 def main():
@@ -39,6 +44,8 @@ def main():
         "X-API-Key": GIFTCODE_API_KEY,
         "Content-Type": "application/json",
     }
+
+    valid_codes = []
 
     try:
         with requests.get(GIFTCODE_API_URL, headers=api_call_headers) as response:
@@ -60,24 +67,29 @@ def main():
                     if code_valid:
                         log.info("==== ADDING CODE TO THE DATABASE ====")
                         GiftCodes.create(code_line=code_line)
+                        valid_codes.append(code_line)
                     sleep(1)
                 else:
                     # log.info(f"Code {code_line} already exists")
-                    for gc in query:
-                        if not gc.active:
-                            gc.active = 1
-                            gc.save()
+                    if RedeemedCodes.select().where(
+                        RedeemedCodes.code_line == code_line
+                    ).count() < len(ids_list):
+                        valid_codes.append(code_line)
+                        # for gc in query:
+                        #     if not gc.active:
+                        #         gc.active = 1
+                        #         gc.save()
 
-            for gc in GiftCodes.select().where(GiftCodes.active == 1):
-                if gc.code_line not in code_lines:
-                    gc.active = 0
-                    gc.save()
+            # for gc in GiftCodes.select().where(GiftCodes.active == 1):
+            #     if gc.code_line not in code_lines:
+            #         gc.active = 0
+            #         gc.save()
 
     except Exception as e:
         print(pretty_traceback(e))
 
     log.info("==== STARTING REDEEMER ====")
-    redeeming_output = start_redeeming(ids_list)
+    redeeming_output = start_redeeming(ids_list, valid_codes)
 
     log.info("==== SAVING FILE ====")
     with open("test_redeem.json", "w+") as f:
@@ -139,10 +151,10 @@ def test_code_validity(code_line: str) -> bool:
     return not (err_code == 40014 or not err_code)
 
 
-def start_redeeming(id_list: List[int]):
-    code_entries = GiftCodes.select().where((GiftCodes.active == True))
+def start_redeeming(id_list: List[int], code_lines: List[str]):
+    # code_entries = GiftCodes.select().where((GiftCodes.active == True))
 
-    code_lines = [code_entry.code_line for code_entry in code_entries]
+    # code_lines = [code_entry.code_line for code_entry in code_entries]
 
     send_startbatch_webhook(code_lines, len(id_list))
 
@@ -252,7 +264,7 @@ def send_startbatch_webhook(codes, ids_len):
     }
 
     requests.post(
-        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        config["redeemer_webhook_url"],
         json=webhook_data,
         params={"with_components": True},
     )
@@ -278,7 +290,7 @@ def send_start_webhook(code, ids_len):
     }
 
     requests.post(
-        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        config["redeemer_webhook_url"],
         json=webhook_data,
         params={"with_components": True},
     )
@@ -314,7 +326,7 @@ def send_finish_webhook(code, ids_len, succeed_len, redeemed_len, failed_len):
     }
 
     requests.post(
-        f"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}",
+        config["redeemer_webhook_url"],
         json=webhook_data,
         params={"with_components": True},
     )
