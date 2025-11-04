@@ -17,8 +17,8 @@ from utils.utils import (
 
 from orms.giftcodes import GiftCodes, RedeemedCodes
 
-# IDS_FILE = "data/ids.jsonc"
-IDS_FILE = "data/test_ids.json"
+IDS_FILE = "data/ids.jsonc"
+# IDS_FILE = "data/test_ids.json"
 MAX_RETRIES = 5
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
