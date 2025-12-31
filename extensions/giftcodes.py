@@ -1,6 +1,7 @@
 import io
 import json
 import asyncio
+import random
 import requests
 from types import NoneType
 from typing import List, Optional
@@ -16,7 +17,7 @@ from discord import ButtonStyle
 from discord.utils import MISSING
 
 from utils.gift_codes import GiftCodeRedeemer, load_model
-from utils.utils import setup_logger
+from utils.utils import ReturnType, keys_exists, setup_logger
 
 IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
@@ -161,63 +162,100 @@ class RedeemerView(ui.LayoutView):
             await self.__interaction.edit_original_response(view=self)
         return self
 
-    async def execute(self, ids):
+    async def execute(self, ids: List[int]):
         success = []
         already_redeemed = []
         fail = []
 
-        for player_id in ids:
-            gift_code_redeemer = GiftCodeRedeemer(
-                player_id=player_id,
-                giftcode=self.__code,
-                onnx_session=self.__onnx,
-                onnx_metadata=self.__metadata,
-            )
+        to_process = ids.copy()
 
-            err_code = 0
+        while to_process:
+            to_process_copy = to_process.copy()
 
-            for i in range(MAX_RETRIES):
-                redeem_data = gift_code_redeemer.redeem_gift_code()
-                err_code = redeem_data.get("request").get("err_code")
-
-                if err_code in [20000, 40008]:
-                    break
-
-                self.update_view(
-                    error=ui.TextDisplay(f"Retry {i + 1}/{MAX_RETRIES} for {player_id}")
+            for player_id in to_process_copy:
+                gift_code_redeemer = GiftCodeRedeemer(
+                    player_id=player_id,
+                    giftcode=self.__code,
+                    onnx_session=self.__onnx,
+                    onnx_metadata=self.__metadata,
                 )
 
-                await asyncio.sleep(1)
+                player_name = keys_exists(
+                    element=gift_code_redeemer.stove_info,
+                    keys=("data", "nickname"),
+                    returntype=ReturnType.RESULT,
+                )
 
-            self.update_view(error=None)
+                err_code = 0
 
-            match err_code:
-                case 20000:
-                    success.append(player_id)
-                case 40008:
-                    already_redeemed.append(player_id)
-                case _:
-                    fail.append(redeem_data)
+                for i in range(MAX_RETRIES):
+                    if i > 0:
+                        gift_code_redeemer.captcha_solution = (
+                            gift_code_redeemer.start_captcha()
+                        )
 
-            await self.update_view(
-                progress=ui.TextDisplay(
-                    f"""
-Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
-━━━━━━━━━━━━━━━━━━━━━━
-✅ {len(success)} / {len(ids)} Success
-❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-❌ {len(fail)} / {len(ids)} Fail
-━━━━━━━━━━━━━━━━━━━━━━
-"""
-                ),
-                error=(
-                    ui.TextDisplay(f"ID: {player_id} failed")
-                    if err_code not in [20000, 40008]
-                    else None
-                ),
-            )
+                    redeem_data = gift_code_redeemer.redeem_gift_code()
+                    # err_code = redeem_data.get("request").get("err_code")
+                    err_code = keys_exists(
+                        redeem_data, ("request", "err_code"), ReturnType.RESULT
+                    )
 
-            await asyncio.sleep(1)
+                    if err_code in [20000, 40008, 40011]:
+                        break
+
+                    await self.update_view(
+                        error=ui.TextDisplay(
+                            f"Retry {i + 1}/{MAX_RETRIES} for {player_name}[{player_id}]"
+                        )
+                    )
+
+                    await asyncio.sleep(
+                        random.uniform(1, 5)
+                        if err_code not in [40100, 40101]
+                        else random.uniform(20, 40)
+                    )
+
+                await self.update_view(error=None)
+
+                if err_code in [20000, 40008, 40011]:
+                    to_process.remove(player_id)
+                    if err_code == 20000:
+                        success.append(player_id)
+                    else:
+                        already_redeemed.append(player_id)
+                else:
+                    fail.append(player_id)
+                    err = f"Error {err_code} encountered for {player_name}[{player_id}]"
+                    log.warning(err)
+                    await self.update_view(error=ui.TextDisplay(err))
+
+                # match err_code:
+                #     case 20000:
+                #         success.append(player_id)
+                #     case 40008:
+                #         already_redeemed.append(player_id)
+                #     case _:
+                #         fail.append(redeem_data)
+
+                await self.update_view(
+                    progress=ui.TextDisplay(
+                        f"""
+    Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
+    ━━━━━━━━━━━━━━━━━━━━━━
+    ✅ {len(success)} / {len(ids)} Success
+    ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
+    # ❌ {len(fail)} / {len(ids)} Fail
+    ━━━━━━━━━━━━━━━━━━━━━━
+    """
+                    ),
+                    error=(
+                        ui.TextDisplay(f"ID: {player_id} failed")
+                        if err_code not in [20000, 40008, 40011]
+                        else None
+                    ),
+                )
+
+                await asyncio.sleep(random.uniform(1, 5))
         return success, already_redeemed, fail
 
     async def perform_mass_redeem(self):
