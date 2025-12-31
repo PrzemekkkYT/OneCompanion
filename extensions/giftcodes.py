@@ -5,8 +5,6 @@ import random
 import requests
 from types import NoneType
 from typing import List, Optional
-import logging
-from logging import StreamHandler
 from jsonc_parser.parser import JsoncParser
 
 import discord
@@ -223,11 +221,11 @@ class RedeemerView(ui.LayoutView):
                         success.append(player_id)
                     else:
                         already_redeemed.append(player_id)
-                else:
-                    fail.append(player_id)
-                    err = f"Error {err_code} encountered for {player_name}[{player_id}]"
-                    log.warning(err)
-                    await self.update_view(error=ui.TextDisplay(err))
+                # else:
+                #     fail.append(player_id)
+                #     err = f"Error {err_code} encountered for {player_name}[{player_id}]"
+                #     log.warning(err)
+                #     await self.update_view(error=ui.TextDisplay(err))
 
                 # match err_code:
                 #     case 20000:
@@ -240,13 +238,13 @@ class RedeemerView(ui.LayoutView):
                 await self.update_view(
                     progress=ui.TextDisplay(
                         f"""
-    Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
-    ━━━━━━━━━━━━━━━━━━━━━━
-    ✅ {len(success)} / {len(ids)} Success
-    ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-    # ❌ {len(fail)} / {len(ids)} Fail
-    ━━━━━━━━━━━━━━━━━━━━━━
-    """
+Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
+━━━━━━━━━━━━━━━━━━━━━━
+✅ {len(success)} / {len(ids)} Success
+❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
+❌ {len(fail)} / {len(ids)} Fail
+━━━━━━━━━━━━━━━━━━━━━━
+"""
                     ),
                     error=(
                         ui.TextDisplay(f"ID: {player_id} failed")
