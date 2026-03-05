@@ -11,6 +11,8 @@ from requests.adapters import HTTPAdapter, Retry
 
 import requests
 
+from utils.browser_headers import get_headers
+
 RESOURCES_FOLDER = "resources"
 # WOS API URLs and Key
 wos_player_info_url = "https://wos-giftcode-api.centurygame.com/api/player"
@@ -55,11 +57,13 @@ class CaptchaSolver:
         self.metadata = metadata
 
     def fetch_captcha(self):
-        headers = {
-            "accept": "application/json, text/plain, */*",
-            "content-type": "application/x-www-form-urlencoded",
-            "origin": wos_giftcode_redemption_url,
-        }
+        # headers = {
+        #     "accept": "application/json, text/plain, */*",
+        #     "content-type": "application/x-www-form-urlencoded",
+        #     "origin": wos_giftcode_redemption_url,
+        # }
+
+        self.req_session.headers.update(get_headers(wos_giftcode_redemption_url))
 
         data_to_encode = {
             "fid": self.player_id,
@@ -72,7 +76,7 @@ class CaptchaSolver:
         try:
             response = self.req_session.post(
                 wos_captcha_url,
-                headers=headers,
+                # headers=headers,
                 data=encoded_data,
             )
             # print(f"Captcha fetch response: {response.text}")
@@ -177,11 +181,14 @@ class GiftCodeRedeemer:
             ),
         )
 
-        headers = {
-            "accept": "application/json, text/plain, */*",
-            "content-type": "application/x-www-form-urlencoded",
-            "origin": wos_giftcode_redemption_url,
-        }
+        # headers = {
+        #     "accept": "application/json, text/plain, */*",
+        #     "content-type": "application/x-www-form-urlencoded",
+        #     "origin": wos_giftcode_redemption_url,
+        # }
+
+        session.headers.update(get_headers(wos_giftcode_redemption_url))
+
         data_to_encode = {
             "fid": f"{player_id}",
             "time": f"{int(datetime.now().timestamp())}",
@@ -189,11 +196,12 @@ class GiftCodeRedeemer:
         data = encode_data(data_to_encode)
         response_stove_info = session.post(
             wos_player_info_url,
-            headers=headers,
+            # headers=headers,
             data=data,
         )
         if response_stove_info.status_code != 200:
             print(response_stove_info.status_code)
+        print(response_stove_info.content)
         return session, response_stove_info.json()
 
     def redeem_gift_code(self):

@@ -36,6 +36,11 @@ class GiftCodes(commands.Cog):
         code: str,
         ids_source: Optional[str] = None,
     ):
+        await interaction.response.send_message(
+            "Due to the new Century Games zero tolerance policy I decided to disable the redeemer for an indefinite time, at least until I'm certain it won't cause any unnecessary bans\n\~Przemekkk"
+        )
+        return
+
         ids = []
         if ids_source:
             if ids_source.startswith("http"):
