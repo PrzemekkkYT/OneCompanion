@@ -7,6 +7,7 @@ from PIL import Image
 import json
 import io
 import os
+import logging
 from requests.adapters import HTTPAdapter, Retry
 
 import requests
@@ -20,6 +21,8 @@ wos_giftcode_url = "https://wos-giftcode-api.centurygame.com/api/gift_code"
 wos_captcha_url = "https://wos-giftcode-api.centurygame.com/api/captcha"
 wos_giftcode_redemption_url = "https://wos-giftcode.centurygame.com"
 wos_encrypt_key = "tB87#kPtkxqOS2"
+
+logger = logging.getLogger("giftcodes")
 
 
 def encode_data(data, debug_sign_error=False):
@@ -79,7 +82,7 @@ class CaptchaSolver:
                 # headers=headers,
                 data=encoded_data,
             )
-            # print(f"Captcha fetch response: {response.text}")
+            # logger.log(f"Captcha fetch response: {response.text}")
 
             if response.status_code == 200:
                 captcha_data = response.json()
@@ -99,7 +102,7 @@ class CaptchaSolver:
             return None, "CAPTCHA_FETCH_ERROR"
         except Exception as e:
             # self.logger.exception(f"Error fetching captcha: {e}")
-            print(f"Error fetching captcha: {e}")
+            logger.error(f"Error fetching captcha: {e}")
             return None, f"CAPTCHA_EXCEPTION: {str(e)}"
 
     def solve(self, image_bytes):
@@ -133,7 +136,7 @@ class CaptchaSolver:
     def solve_captcha(self):
         image_b64, err = self.fetch_captcha()
         if err:
-            print(f"Error fetching captcha: {err}")
+            logger.error(f"Error fetching captcha: {err}")
             return None
 
         image_bytes = base64.b64decode(image_b64)
@@ -149,7 +152,7 @@ class GiftCodeRedeemer:
         onnx_metadata,
     ):
         sess, si = self.get_stove_info(player_id)
-        # print(si)
+        # logger.log(si)
 
         if si:
             self.req_session, self.stove_info = sess, si
@@ -200,8 +203,8 @@ class GiftCodeRedeemer:
             data=data,
         )
         if response_stove_info.status_code != 200:
-            print(response_stove_info.status_code)
-        print(response_stove_info.content)
+            logger.warning(response_stove_info.status_code)
+        logger.info(response_stove_info.content)
         return session, response_stove_info.json()
 
     def redeem_gift_code(self):
