@@ -7,16 +7,6 @@ import random
 
 from orms.configs import GuildConfigs
 
-try:
-    from watchdog.observers import Observer
-    from utils.cog_watcher import CogReloader
-
-    # raise
-
-    COG_WATCHER_AVAILABLE = 1
-except:
-    COG_WATCHER_AVAILABLE = 0
-
 import discord
 from discord.ext import commands, tasks
 from typing import Literal
@@ -40,7 +30,7 @@ class MyClient(commands.Bot):
         super().__init__(
             command_prefix="f!",
             intents=intents,
-            status=discord.Status.idle,
+            status=discord.Status.online,
             activity=discord.CustomActivity(name="ONE for all"),
         )
 
@@ -122,19 +112,19 @@ if __name__ == "__main__":
     intents = discord.Intents.all()
     client = MyClient(intents=intents)
 
-    if COG_WATCHER_AVAILABLE:
-        observer = Observer()
-        observer.schedule(CogReloader(client), "./extensions", recursive=False)
-        observer.start()
+    # if COG_WATCHER_AVAILABLE:
+    #     observer = Observer()
+    #     observer.schedule(CogReloader(client), "./extensions", recursive=False)
+    #     observer.start()
 
-        # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-        try:
-            client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-        finally:
-            observer.stop()
-            observer.join()
-    else:
-        client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+    #     # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+    #     try:
+    #         client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+    #     finally:
+    #         observer.stop()
+    #         observer.join()
+    # else:
+    client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
 
 
 @client.command()
