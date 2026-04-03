@@ -20,6 +20,8 @@ from utils.utils import ReturnType, keys_exists, setup_logger
 IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
 
+GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
+GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
 
 log = setup_logger("giftcodes", "logs/giftcodes.log")
 
@@ -28,6 +30,53 @@ class GiftCodes(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.translator = self.client.tree.translator
+
+    @app_commands.command()
+    async def findcodes(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            with requests.get(
+                GIFTCODE_API_URL,
+                headers={
+                    "X-API-Key": GIFTCODE_API_KEY,
+                    "Content-Type": "application/json",
+                },
+            ) as response:
+                if response.status_code != 200:
+                    raise ConnectionError(
+                        f"Failed to fetch gift codes\nResponse code: {response.status_code}\nResponse: {response.text}"
+                    )
+
+                data = response.json()
+                if "codes" not in data:
+                    raise ValueError("Invalid response format, 'codes' key not found.")
+
+                ret_text = "**Available codes:**"
+                for code_line in data["codes"]:
+                    code = code_line.split(" ")[0]
+
+                    ret_text = f"{ret_text}\n└ **`{code}`**"
+
+                view = ui.LayoutView()
+                container = ui.Container(accent_color=discord.Color.green())
+
+                container.add_item(ui.TextDisplay("## Codes found"))
+                container.add_item(ui.TextDisplay(ret_text))
+
+                view.add_item(container)
+
+                await interaction.edit_original_response(view=view)
+
+        except Exception as e:
+            view = ui.LayoutView()
+            container = ui.Container(accent_color=discord.Color.red())
+
+            container.add_item(ui.TextDisplay("## Error"))
+            container.add_item(ui.TextDisplay(e.args))
+
+            view.add_item(container)
+
+            await interaction.edit_original_response(view=view)
 
     @app_commands.command()
     async def redeemer(
