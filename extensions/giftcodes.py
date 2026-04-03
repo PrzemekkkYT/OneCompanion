@@ -14,7 +14,7 @@ from discord.ext import commands
 from discord import ButtonStyle
 from discord.utils import MISSING
 
-from utils.gift_codes import GiftCodeRedeemer, load_model
+from utils.gift_codes import GiftCodeRedeemer, load_model, test_code_validity
 from utils.utils import ReturnType, keys_exists, setup_logger
 
 IDS_FILE = "data/ids.jsonc"
@@ -36,6 +36,7 @@ class GiftCodes(commands.Cog):
         code: str,
         ids_source: Optional[str] = None,
     ):
+        await interaction.response.defer()
         ids = []
         if ids_source:
             if ids_source.startswith("http"):
@@ -59,11 +60,26 @@ class GiftCodes(commands.Cog):
                 ids = file_data
 
         if not ids:
-            await interaction.response.send_message("No IDs found in the given source")
+            await interaction.edit_original_response("No IDs found in the given source")
             return
 
-        redeemer = RedeemerView(interaction, code)
-        await redeemer.init(ids)
+        if await test_code_validity(code):
+            redeemer = RedeemerView(interaction, code)
+            await redeemer.init(ids)
+        else:
+
+            view = ui.LayoutView()
+            view.add_item(
+                ui.Container(
+                    ui.TextDisplay("## Auto Redeem - Cancelled"),
+                    ui.TextDisplay(
+                        "Provided code is either wrong or couldn't be validated."
+                    ),
+                )
+            )
+            await interaction.edit_original_response(view=view)
+            # await interaction.delete_original_response()
+            # await interaction.followup.send(view=view)
 
 
 class RedeemerView(ui.LayoutView):
@@ -74,6 +90,14 @@ class RedeemerView(ui.LayoutView):
     @property
     def fail(self):
         return self.__fail
+
+    @property
+    def cancelled(self):
+        return self.__cancelled
+
+    @cancelled.setter
+    def cancelled(self, value):
+        self.__cancelled = value
 
     def __init__(self, interaction: discord.Interaction, code: str):
         super().__init__(timeout=None)
@@ -89,18 +113,23 @@ class RedeemerView(ui.LayoutView):
 
         self.__control_buttons = RedeemerControlButtons(self)
 
+        self.__container_color = None
+
         self.__additional_items = []
 
         self.__success = []
         self.__already_redeemed = []
         self.__fail = []
 
+        self.__cancelled = False
+
         self.add_item(self._build_container())
+        self.add_item(ui.Container(self.__control_buttons))
 
     async def init(self, ids: List[int]):
         self.__ids = ids
         self.__info.content = f"**Code: `{self.__code}`\nIncluded accounts: {len(ids)}\nStart the auto redeem?**"
-        await self.__interaction.response.send_message(view=self)
+        await self.__interaction.edit_original_response(view=self)
 
     def _build_container(self):
         return ui.Container(
@@ -108,7 +137,8 @@ class RedeemerView(ui.LayoutView):
             self.__info,
             *([self.__progress] if self.__progress else []),
             *([self.__error] if self.__error else []),
-            *([self.__control_buttons] if self.__control_buttons else []),
+            # *([self.__control_buttons] if self.__control_buttons else []),
+            accent_color=self.__container_color,
         )
 
     async def update_view(
@@ -118,6 +148,7 @@ class RedeemerView(ui.LayoutView):
         progress: ui.TextDisplay | None = MISSING,
         error: ui.TextDisplay | None = MISSING,
         control_buttons: ui.ActionRow | None = MISSING,
+        container_color: discord.Color | int | None = MISSING,
         new_items: List[ui.Item] | None = MISSING,
         only_return=False,
     ):
@@ -146,9 +177,20 @@ class RedeemerView(ui.LayoutView):
         if control_buttons is not MISSING:
             self.__control_buttons = control_buttons
 
+        if container_color is not MISSING:
+            if isinstance(
+                container_color,
+                (discord.Color, int),
+            ):
+                self.__container_color = container_color
+
         new_container = self._build_container()
         self.clear_items()
         self.add_item(new_container)
+
+        if self.__control_buttons:
+            self.add_item(ui.Container(self.__control_buttons))
+        # self.add_item(*([self.__control_buttons] if self.__control_buttons else []))
 
         if new_items is not MISSING:
             self.__additional_items = new_items
@@ -168,9 +210,14 @@ class RedeemerView(ui.LayoutView):
         to_process = ids.copy()
 
         while to_process:
+            if self.__cancelled:
+                break
             to_process_copy = to_process.copy()
 
             for player_id in to_process_copy:
+                if self.__cancelled:
+                    break
+
                 gift_code_redeemer = GiftCodeRedeemer(
                     player_id=player_id,
                     giftcode=self.__code,
@@ -201,19 +248,28 @@ class RedeemerView(ui.LayoutView):
                     if err_code in [20000, 40008, 40011]:
                         break
 
-                    await self.update_view(
-                        error=ui.TextDisplay(
-                            f"Retry {i + 1}/{MAX_RETRIES} for {player_name}[{player_id}]"
-                        )
-                    )
-
-                    await asyncio.sleep(
+                    sleep_time = (
                         random.uniform(1, 5)
                         if err_code not in [40100, 40101]
                         else random.uniform(20, 40)
                     )
 
-                await self.update_view(error=None)
+                    captcha_failed_text = ""
+                    if sleep_time >= 20:
+                        captcha_failed_text = (
+                            f"\nCaptcha failed, waiting {sleep_time} seconds"
+                        )
+
+                    await self.update_view(
+                        error=ui.TextDisplay(
+                            f"Retry {i + 1}/{MAX_RETRIES} for {player_name}[{player_id}]{captcha_failed_text}"
+                        ),
+                        container_color=discord.Color.red(),
+                    )
+
+                    await asyncio.sleep(sleep_time)
+
+                await self.update_view(error=None, container_color=discord.Color.blue())
 
                 if err_code in [20000, 40008, 40011]:
                     to_process.remove(player_id)
@@ -251,6 +307,11 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                         if err_code not in [20000, 40008, 40011]
                         else None
                     ),
+                    container_color=(
+                        discord.Color.red()
+                        if err_code not in [20000, 40008, 40011]
+                        else discord.Color.blue()
+                    ),
                 )
 
                 await asyncio.sleep(random.uniform(1, 5))
@@ -262,11 +323,16 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             info=ui.TextDisplay(
                 f"**Code: `{self.__code}`\nIncluded accounts: {len(self.__ids)}**"
             ),
+            control_buttons=RedeemerCancelButtons(self),
+            container_color=discord.Color.blue(),
         )
 
         self.__success, self.__already_redeemed, self.__fail = await self.execute(
             self.__ids
         )
+
+        if self.__cancelled:
+            return
 
         await self.update_view(
             title=ui.TextDisplay("## Auto Redeem - Finished"),
@@ -275,6 +341,7 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                 if self.__fail
                 else None
             ),
+            container_color=discord.Color.green(),
             control_buttons=RedeemerRetryButtons(self) if self.__fail else None,
         )
 
@@ -285,6 +352,7 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                 f"**Code: `{self.__code}`\nIncluded accounts: {len(self.__fail)}**"
             ),
             error=None,
+            container_color=discord.Color.blue(),
             control_buttons=None,
         )
 
@@ -314,6 +382,9 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                     )
                     if self.__fail
                     else None
+                ),
+                container_color=(
+                    discord.Color.red() if self.__fail else discord.Color.green()
                 ),
                 control_buttons=RedeemerFailedButtons(self),
             )
@@ -443,6 +514,25 @@ class RedeemerFailedButtons(ui.ActionRow):
         await self.__view.interaction.delete_original_response()
         await button_interaction.followup.send(
             "Auto Redeem canceled without getting failed ids"
+        )
+
+
+class RedeemerCancelButtons(ui.ActionRow):
+    def __init__(self, view: RedeemerView):
+        self.__view = view
+
+        super().__init__()
+
+    @ui.button(label="Cancel", style=ButtonStyle.red, custom_id="redeemer_retry_cancel")
+    async def cancel_button(
+        self, button_interaction: discord.Interaction, button: ui.Button
+    ):
+        await button_interaction.response.defer()
+        self.__view.cancelled = True
+        await self.__view.update_view(
+            title=ui.TextDisplay("## Auto Redeem - Cancelled"),
+            control_buttons=None,
+            container_color=discord.Color.blurple(),
         )
 
 

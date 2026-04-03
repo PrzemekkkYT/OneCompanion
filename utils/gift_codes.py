@@ -1,6 +1,8 @@
+import asyncio
 import base64
 from datetime import datetime
 import hashlib
+import random
 import onnxruntime as ort
 import numpy as np
 from PIL import Image
@@ -13,6 +15,7 @@ from requests.adapters import HTTPAdapter, Retry
 import requests
 
 from utils.browser_headers import get_headers
+from utils.utils import ReturnType, keys_exists
 
 RESOURCES_FOLDER = "resources"
 # WOS API URLs and Key
@@ -24,8 +27,10 @@ wos_encrypt_key = "tB87#kPtkxqOS2"
 
 logger = logging.getLogger("giftcodes")
 
+MAX_RETRIES = 5
 
-def encode_data(data, debug_sign_error=False):
+
+def encode_data(data):
     secret = wos_encrypt_key
     sorted_keys = sorted(data.keys())
     encoded_data = "&".join(
@@ -50,6 +55,42 @@ def load_model():
         metadata = json.load(f)
 
     return onnx_session, metadata
+
+
+async def test_code_validity(code: str) -> bool:
+    onnx_session, metadata = load_model()
+
+    redeemer = GiftCodeRedeemer(
+        player_id=350790869,
+        giftcode=code,
+        onnx_session=onnx_session,
+        onnx_metadata=metadata,
+    )
+
+    err_code = 0
+
+    for i in range(MAX_RETRIES):
+        if i > 0:
+            redeemer.captcha_solution = redeemer.start_captcha()
+        redeem_data = redeemer.redeem_gift_code()
+        err_code = keys_exists(redeem_data, ("request", "err_code"), ReturnType.RESULT)
+        err_msg = keys_exists(redeem_data, ("request", "msg"), ReturnType.RESULT)
+
+        logger.info(f"Veryfication for code {code}: {err_code=} | {err_msg=}")
+
+        if err_code in [20000, 40008, 40011]:
+            return True
+
+        if err_code == 40014:
+            break
+
+        await asyncio.sleep(
+            random.uniform(1, 5)
+            if err_code not in [40100, 40101]
+            else random.uniform(20, 40)
+        )
+
+    return not (err_code == 40014 or not err_code)
 
 
 class CaptchaSolver:
@@ -202,9 +243,9 @@ class GiftCodeRedeemer:
             # headers=headers,
             data=data,
         )
-        if response_stove_info.status_code != 200:
-            logger.warning(response_stove_info.status_code)
-        logger.info(response_stove_info.content)
+        # if response_stove_info.status_code != 200:
+        #     logger.warning(response_stove_info.status_code)
+        # logger.info(response_stove_info.content)
         return session, response_stove_info.json()
 
     def redeem_gift_code(self):
