@@ -326,8 +326,10 @@ class RedeemerView(ui.LayoutView):
                         success.append(player_id)
                     else:
                         already_redeemed.append(player_id)
-                # else:
-                #     fail.append(player_id)
+                    if player_id in fail:
+                        fail.remove(player_id)
+                else:
+                    fail.append(player_id)
                 #     err = f"Error {err_code} encountered for {player_name}[{player_id}]"
                 #     log.warning(err)
                 #     await self.update_view(error=ui.TextDisplay(err))

@@ -15,6 +15,16 @@ from utils.whitecord import Embed, EmbedField
 from utils.translator import WhiteTranslator
 from utils.utils import pretty_traceback
 
+try:
+    from watchdog.observers import Observer
+    from utils.cog_watcher import CogReloader
+
+    # raise
+
+    COG_WATCHER_AVAILABLE = 1
+except:
+    COG_WATCHER_AVAILABLE = 0
+
 logger = logging.getLogger("discord")
 
 Path("logs").mkdir(exist_ok=True)
@@ -112,38 +122,62 @@ if __name__ == "__main__":
     intents = discord.Intents.all()
     client = MyClient(intents=intents)
 
-    # if COG_WATCHER_AVAILABLE:
-    #     observer = Observer()
-    #     observer.schedule(CogReloader(client), "./extensions", recursive=False)
-    #     observer.start()
+    @client.tree.context_menu(name="Get User Info")
+    async def user_info(interaction: discord.Interaction, user: discord.User):
+        await interaction.response.defer()
+        await interaction.delete_original_response()
+        embed = Embed(
+            translator=client.tree.translator,
+            title=f"{user} ({user.id})",
+            description=(user.mention if hasattr(user, "mention") else None),
+            image=user.avatar,
+            fields=[
+                EmbedField(name="Username", value=str(user), inline=True),
+                EmbedField(
+                    name="Global name", value=(user.global_name or "None"), inline=True
+                ),
+                EmbedField(name="User ID", value=str(user.id), inline=True),
+                EmbedField(
+                    name="Bot",
+                    value="Yes" if getattr(user, "bot", False) else "No",
+                    inline=True,
+                ),
+                EmbedField(
+                    name="Created at (UTC)",
+                    value=user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    inline=True,
+                ),
+            ],
+        )
 
-    #     # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-    #     try:
-    #         client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-    #     finally:
-    #         observer.stop()
-    #         observer.join()
-    # else:
-    client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+        await interaction.user.send(embed=embed)
 
+    @client.tree.command()
+    @discord.app_commands.check(lambda i: i.user.id == 183242057882664961)
+    async def reload(
+        interaction: discord.Interaction,
+        extension: Literal["all", "help", "schedule", "squads", "tests"] = "all",
+    ):
+        if extension == "all":
+            for filename in os.listdir("./extensions"):
+                if filename.endswith(".py"):
+                    await client.reload_extension(f"extensions.{filename[:-3]}")
+            await interaction.response.send_message("All extensions reloaded.")
+        else:
+            await client.reload_extension(f"extensions.{extension}")
 
-@client.command()
-async def ping(ctx):
-    await ctx.send("Pong!")
+    if COG_WATCHER_AVAILABLE:
+        print("starting observer")
+        observer = Observer()
+        observer.schedule(CogReloader(client), "./extensions", recursive=False)
+        observer.schedule(CogReloader(client), "./utils", recursive=False)
+        observer.start()
 
-
-@client.tree.command()
-@discord.app_commands.check(
-    lambda i: i.user.id == 183242057882664961
-)  # Replace with your user ID
-async def reload(
-    interaction: discord.Interaction,
-    extension: Literal["all", "help", "schedule", "squads", "tests"] = "all",
-):
-    if extension == "all":
-        for filename in os.listdir("./extensions"):
-            if filename.endswith(".py"):
-                await client.reload_extension(f"extensions.{filename[:-3]}")
-        await interaction.response.send_message("All extensions reloaded.")
+        # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+        try:
+            client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+        finally:
+            observer.stop()
+            observer.join()
     else:
-        await client.reload_extension(f"extensions.{extension}")
+        client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
