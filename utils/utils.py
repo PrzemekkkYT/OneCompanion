@@ -11,14 +11,16 @@ KILOBYTE = 1024
 MEGABYTE = 1024 * 1024
 
 
-def setup_logger(name, log_file, level=logging.INFO):
+def setup_logger(name, log_file, level=logging.INFO, rotating=True):
     """To setup as many loggers as you want"""
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
-    # handler = logging.FileHandler(log_file, encoding="utf-8")
-    handler = handlers.RotatingFileHandler(
-        log_file, maxBytes=20 * KILOBYTE, backupCount=5
-    )
+    if rotating:
+        handler = handlers.RotatingFileHandler(
+            log_file, maxBytes=20 * KILOBYTE, backupCount=5
+        )
+    else:
+        handler = logging.FileHandler(log_file, encoding="utf-8")
     handler.setFormatter(formatter)
 
     streamhandler = logging.StreamHandler()
@@ -30,6 +32,17 @@ def setup_logger(name, log_file, level=logging.INFO):
     logger.addHandler(streamhandler)
 
     return logger
+
+
+def shutdown_logger(logger_obj: logging.Logger):
+    # Pobieramy kopię listy handlerów, aby bezpiecznie po niej iterować
+    handlers = logger_obj.handlers[:]
+    for handler in handlers:
+        handler.close()  # Zamyka plik/strumień
+        logger_obj.removeHandler(handler)  # Odpina handler od loggera
+
+    # Opcjonalnie: ustawiamy poziom na NOTSET, aby przestał przetwarzać cokolwiek
+    logger_obj.setLevel(logging.NOTSET)
 
 
 def pretty_traceback(error: BaseException, comment=""):

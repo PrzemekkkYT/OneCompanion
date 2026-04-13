@@ -3,8 +3,9 @@ import json
 import asyncio
 import random
 import requests
+from datetime import datetime
 from types import NoneType
-from typing import List, Optional
+from typing import List, Optional, Union
 from jsonc_parser.parser import JsoncParser
 
 import discord
@@ -15,7 +16,7 @@ from discord import ButtonStyle
 from discord.utils import MISSING
 
 from utils.gift_codes import GiftCodeRedeemer, load_model, test_code_validity
-from utils.utils import ReturnType, keys_exists, setup_logger
+from utils.utils import ReturnType, keys_exists, setup_logger, shutdown_logger
 
 IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
@@ -24,6 +25,12 @@ GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
 
 log = setup_logger("giftcodes", "logs/giftcodes.log")
+
+
+class CodeInvalid(Exception): ...
+
+
+class CodeForVIP(Exception): ...
 
 
 class GiftCodes(commands.Cog):
@@ -112,11 +119,17 @@ class GiftCodes(commands.Cog):
             await interaction.edit_original_response("No IDs found in the given source")
             return
 
-        if await test_code_validity(code):
-            redeemer = RedeemerView(interaction, code)
-            await redeemer.init(ids)
-        else:
-
+        code_valid, err_code = await test_code_validity(code)
+        try:
+            if code_valid:
+                redeemer = RedeemerView(interaction, code)
+                await redeemer.init(ids)
+            else:
+                if err_code not in [40018]:
+                    raise CodeInvalid("Code Invalid")
+                else:
+                    raise CodeForVIP("Code available for VIP 12 only")
+        except Exception as e:
             view = ui.LayoutView()
             view.add_item(
                 ui.Container(
@@ -124,11 +137,10 @@ class GiftCodes(commands.Cog):
                     ui.TextDisplay(
                         "Provided code is either wrong or couldn't be validated."
                     ),
+                    ui.TextDisplay(str(e)),
                 )
             )
             await interaction.edit_original_response(view=view)
-            # await interaction.delete_original_response()
-            # await interaction.followup.send(view=view)
 
 
 class RedeemerView(ui.LayoutView):
@@ -148,6 +160,10 @@ class RedeemerView(ui.LayoutView):
     def cancelled(self, value):
         self.__cancelled = value
 
+    @property
+    def code(self):
+        return self.__code
+
     def __init__(self, interaction: discord.Interaction, code: str):
         super().__init__(timeout=None)
         self.__interaction = interaction
@@ -166,11 +182,20 @@ class RedeemerView(ui.LayoutView):
 
         self.__additional_items = []
 
+        self.__attachments: List[discord.File] = []
+
         self.__success = []
         self.__already_redeemed = []
         self.__fail = []
 
         self.__cancelled = False
+
+        self.logger = setup_logger(
+            code,
+            f"logs/giftcodes/{code}_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}.log",
+            rotating=False,
+        )
+        self.logger.info(f"Starting redeemer for code {code}")
 
         self.add_item(self._build_container())
         self.add_item(ui.Container(self.__control_buttons))
@@ -199,6 +224,7 @@ class RedeemerView(ui.LayoutView):
         control_buttons: ui.ActionRow | None = MISSING,
         container_color: discord.Color | int | None = MISSING,
         new_items: List[ui.Item] | None = MISSING,
+        attachments: List[discord.File] | None = MISSING,
         only_return=False,
     ):
         # set title
@@ -239,16 +265,23 @@ class RedeemerView(ui.LayoutView):
 
         if self.__control_buttons:
             self.add_item(ui.Container(self.__control_buttons))
-        # self.add_item(*([self.__control_buttons] if self.__control_buttons else []))
 
         if new_items is not MISSING:
             self.__additional_items = new_items
 
+        if attachments is not MISSING:
+            self.__attachments = attachments
+
         for item in self.__additional_items:
             self.add_item(item)
 
+        for att in self.__attachments:
+            self.add_item(ui.File(att))
+
         if not only_return:
-            await self.__interaction.edit_original_response(view=self)
+            await self.__interaction.edit_original_response(
+                view=self, attachments=self.__attachments
+            )
         return self
 
     async def execute(self, ids: List[int]):
@@ -294,7 +327,7 @@ class RedeemerView(ui.LayoutView):
                         redeem_data, ("request", "err_code"), ReturnType.RESULT
                     )
 
-                    if err_code in [20000, 40008, 40011]:
+                    if err_code in [20000, 40008, 40011, 40018]:
                         break
 
                     sleep_time = (
@@ -324,11 +357,21 @@ class RedeemerView(ui.LayoutView):
                     to_process.remove(player_id)
                     if err_code == 20000:
                         success.append(player_id)
+                        self.logger.info(f"Succeded for {player_name}")
                     else:
                         already_redeemed.append(player_id)
+                        self.logger.info(f"Already redeemed for {player_name}")
                     if player_id in fail:
                         fail.remove(player_id)
+                        self.logger.info(f"Failed for {player_name}, will retry")
                 else:
+                    if err_code in [40018]:
+                        to_process.remove(player_id)
+                        self.logger.info(
+                            f"Failed for {player_name}, VIP too low, won't retry"
+                        )
+                    else:
+                        self.logger.info(f"Failed for {player_name}, will retry")
                     fail.append(player_id)
                 #     err = f"Error {err_code} encountered for {player_name}[{player_id}]"
                 #     log.warning(err)
@@ -394,7 +437,14 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             ),
             container_color=discord.Color.green(),
             control_buttons=RedeemerRetryButtons(self) if self.__fail else None,
+            attachments=[
+                discord.File(
+                    self.logger.handlers[0].baseFilename,
+                    f"{self.code}.log",
+                )
+            ],
         )
+        shutdown_logger(self.logger)
 
     async def retry(self):
         await self.update_view(
@@ -574,16 +624,23 @@ class RedeemerCancelButtons(ui.ActionRow):
 
         super().__init__()
 
-    @ui.button(label="Cancel", style=ButtonStyle.red, custom_id="redeemer_retry_cancel")
+    @ui.button(label="Cancel", style=ButtonStyle.red, custom_id="redeemer_cancel")
     async def cancel_button(
         self, button_interaction: discord.Interaction, button: ui.Button
     ):
+        print(self.__view.logger.handlers[0].baseFilename)
         await button_interaction.response.defer()
         self.__view.cancelled = True
         await self.__view.update_view(
             title=ui.TextDisplay("## Auto Redeem - Cancelled"),
             control_buttons=None,
             container_color=discord.Color.blurple(),
+            attachments=[
+                discord.File(
+                    self.__view.logger.handlers[0].baseFilename,
+                    f"{self.__view.code}.log",
+                )
+            ],
         )
 
 
