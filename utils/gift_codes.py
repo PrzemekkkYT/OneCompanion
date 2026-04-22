@@ -79,10 +79,10 @@ async def test_code_validity(code: str) -> bool:
         logger.info(f"Veryfication for code {code}: {err_code=} | {err_msg=}")
 
         if err_code in [20000, 40008, 40011]:
-            return True
+            return True, err_code
 
-        if err_code == 40014:
-            break
+        if err_code in [40014, 40018]:
+            return True, err_code
 
         await asyncio.sleep(
             random.uniform(1, 5)
@@ -90,7 +90,7 @@ async def test_code_validity(code: str) -> bool:
             else random.uniform(20, 40)
         )
 
-    return not (err_code == 40014 or not err_code)
+    return False, err_code
 
 
 class CaptchaSolver:
