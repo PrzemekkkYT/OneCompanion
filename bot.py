@@ -28,6 +28,7 @@ except:
 logger = logging.getLogger("discord")
 
 Path("logs").mkdir(exist_ok=True)
+Path("cache").mkdir(exist_ok=True)
 handler = logging.FileHandler(filename="logs/bot.log", encoding="utf-8", mode="a+")
 
 bot_config = json.load(open("./config.json", "r+"))
