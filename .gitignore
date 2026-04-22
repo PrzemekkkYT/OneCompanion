@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 
 config.json
+gcloud_credentials.json
 utils/cog_watcher.py
 extensions/tests.py
 database/
+cache/

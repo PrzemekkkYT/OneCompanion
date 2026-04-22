@@ -22,9 +22,10 @@ class Config(commands.Cog):
         self,
         interaction: discord.Interaction,
         logchannel: Optional[discord.TextChannel] = None,
+        translator_enabled: Optional[bool] = None,
     ):
         """Configure the bot settings for this server."""
-        if logchannel is None:
+        if logchannel is None and translator_enabled is None:
             guild_config = GuildConfigs.get(guild_id=interaction.guild_id)
             view = ConfigView(
                 interaction,
@@ -33,6 +34,7 @@ class Config(commands.Cog):
                     if guild_config.log_channel_id
                     else None
                 ),
+                translator_enabled=guild_config.translator_enabled,
             )
 
             await interaction.response.send_message(view=view)
@@ -56,6 +58,22 @@ class Config(commands.Cog):
 
             view = ui.LayoutView()
             view.add_item(ui.Container(ui.TextDisplay(msg)))
+
+            await interaction.response.send_message(view=view)
+
+        if translator_enabled is not None:
+            GuildConfigs.update(translator_enabled=translator_enabled).where(
+                GuildConfigs.guild_id == interaction.guild_id
+            ).execute()
+
+            view = ui.LayoutView()
+            view.add_item(
+                ui.Container(
+                    ui.TextDisplay(
+                        f"## Successfully {'enabled' if translator_enabled else 'disabled'} the translator."
+                    )
+                )
+            )
 
             await interaction.response.send_message(view=view)
 
@@ -90,15 +108,22 @@ class ConfigView(ui.LayoutView):
         return self.__interaction
 
     def __init__(
-        self, interaction: discord.Interaction, logchannel: Optional[str] = None
+        self,
+        interaction: discord.Interaction,
+        logchannel: Optional[str] = None,
+        translator_enabled: Optional[bool] = False,
     ):
         super().__init__()
         self.__interaction = interaction
 
-        container = self.create_container(logchannel)
+        container = self.create_container(logchannel, translator_enabled)
         self.add_item(container)
 
-    def create_container(self, logchannel: Optional[str] = None) -> ui.Container:
+    def create_container(
+        self,
+        logchannel: Optional[str] = None,
+        translator_enabled: Optional[bool] = False,
+    ) -> ui.Container:
         container = ui.Container(
             ui.TextDisplay("# Bot Config"),
             ui.TextDisplay("### Log Channel"),
@@ -109,6 +134,10 @@ class ConfigView(ui.LayoutView):
                 )
                 if logchannel
                 else ui.TextDisplay("No log channel is currently set.")
+            ),
+            ui.TextDisplay("### Translator"),
+            ui.TextDisplay(
+                f"Translator status: {'enabled' if translator_enabled else 'disabled'}"
             ),
         )
         return container

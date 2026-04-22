@@ -8,6 +8,7 @@ from discord.app_commands import locale_str
 from google.cloud import translate_v2
 from google.oauth2 import service_account
 
+from orms.configs import GuildConfigs
 from utils.whitecord import Embed, EmbedAuthor
 import os
 from datetime import date
@@ -73,6 +74,10 @@ class Translator(commands.Cog):
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         if payload.user_id == self.client.user.id:
+            return
+
+        cfg: GuildConfigs | None = GuildConfigs.get_or_none(guild_id=payload.guild_id)
+        if not cfg or not cfg.translator_enabled:
             return
 
         emoji = str(payload.emoji)

@@ -21,6 +21,7 @@ class BaseModel(Model):
 class GuildConfigs(BaseModel):
     guild_id = IntegerField(null=False, unique=True, primary_key=True)
     log_channel_id = IntegerField(null=True)
+    translator_enabled = IntegerField(null=False, default=0)
 
     class Meta:
         table_name = "GuildConfigs"
