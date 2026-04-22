@@ -64,7 +64,7 @@ class Translator(commands.Cog):
         )
         self.gtranslate_client = translate_v2.Client(credentials=credentials)
 
-    async def get_or_create_webhook(self, channel: discord.guild.GuildChannel):
+    async def get_or_create_webhook(self, channel: discord.TextChannel):
         webhooks = await channel.webhooks()
         for wh in webhooks:
             if wh.name == "Translator":
