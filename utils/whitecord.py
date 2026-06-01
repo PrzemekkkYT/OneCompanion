@@ -2,12 +2,15 @@ from typing import Callable, Optional, Union, List, Any
 from datetime import datetime
 
 import discord
+from discord import ui
 from discord.app_commands import Translator, locale_str
 from discord.types.embed import EmbedType
 from discord import ButtonStyle, Emoji, PartialEmoji
 from discord.enums import Locale
 
 from utils.translator import WhiteTranslator
+
+UNSET: Any = object()
 
 
 class EmbedError(Exception): ...
@@ -446,3 +449,70 @@ class LVPagination:
         self.message = await self.__interaction.edit_original_response(
             view=await self.build_view()
         )
+
+
+class WhiteView(ui.LayoutView):
+    @property
+    def interaction(self):
+        return self.__interaction
+
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__()
+        self.__interaction = interaction
+
+        self.__title: ui.TextDisplay | str | None = None
+        self.__subtitle: ui.TextDisplay | str | None = None
+        self.__content: ui.TextDisplay | str | None = None
+        self.__error: ui.TextDisplay | str | None = None
+        self.__control_buttons: ui.ActionRow | None = None
+
+        self.__container_color: discord.Colour | int | None = None
+
+        self.add_item(self._build_container())
+
+    async def on_timeout(self):
+        await self.update_view(control_buttons=None, error="Timed out")
+        return super().on_timeout()
+
+    def _build_container(self):
+        items: list[ui.Item] = []
+        for value in (self.__title, self.__subtitle, self.__content, self.__error):
+            if value is None:
+                continue
+            items.append(ui.TextDisplay(value) if isinstance(value, str) else value)
+        items.append(ui.Separator())
+        if self.__control_buttons is not None:
+            items.append(self.__control_buttons)
+
+        return ui.Container(*items, accent_color=self.__container_color)
+
+    async def update_view(
+        self,
+        title: ui.TextDisplay | str | None | Any = UNSET,
+        subtitle: ui.TextDisplay | str | None | Any = UNSET,
+        content: ui.TextDisplay | str | None | Any = UNSET,
+        error: ui.TextDisplay | str | None | Any = UNSET,
+        control_buttons: ui.ActionRow | None | Any = UNSET,
+        container_color: discord.Colour | int | None | Any = UNSET,
+    ):
+        # If *UNSET: parameter omitted -> keep current value
+        # If None: explicitly clear/reset
+        if title is not UNSET:
+            self.__title = title
+        if subtitle is not UNSET:
+            self.__subtitle = subtitle
+        if content is not UNSET:
+            self.__content = content
+        if error is not UNSET:
+            self.__error = error
+        if control_buttons is not UNSET:
+            self.__control_buttons = control_buttons
+        if container_color is not UNSET:
+            self.__container_color = container_color
+
+        # Rebuild the container with updated items
+        self.clear_items()
+        self.add_item(self._build_container())
+
+        await self.__interaction.edit_original_response(view=self)
+        return self

@@ -33,13 +33,15 @@ class ScheduledEvents(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.translator = self.client.tree.translator
-        self.post_notification.start()
-        log.info(
-            f"Post Notification starts on {datetime.now()} and will work every minute"
-        )
+        if not getattr(self.client, "pn_started", False):
+            self.post_notification.start()
+            log.info(
+                f"Post Notification starts on {datetime.now()} and will work every minute"
+            )
 
     @tasks.loop(minutes=1)
     async def post_notification(self):
+        self.client.pn_started = True
         for guild in self.client.guilds:
             notifications = ScheduledEventNotifications.select().where(
                 ScheduledEventNotifications.guild_id == guild.id
@@ -395,7 +397,7 @@ class ReminderOffsetSetter(ui.LayoutView):
         event: discord.ScheduledEvent,
         interaction: discord.Interaction,
     ):
-        super().__init__()
+        super().__init__(timeout=3)
         self.__interaction = interaction
         self.__event = event
 
