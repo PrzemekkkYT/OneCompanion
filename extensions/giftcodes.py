@@ -3,9 +3,12 @@ import json
 import asyncio
 import random
 import requests
+import threading
+import time
 from datetime import datetime
 from types import NoneType
 from typing import List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
 from jsonc_parser.parser import JsoncParser
 
 import discord
@@ -15,11 +18,12 @@ from discord.ext import commands
 from discord import ButtonStyle
 from discord.utils import MISSING
 
+from orms.players import Players
 from utils.gift_codes import GiftCodeRedeemer, load_model, test_code_validity
 from utils.utils import ReturnType, keys_exists, setup_logger, shutdown_logger
 
-IDS_FILE = "data/ids.jsonc"
 MAX_RETRIES = 5
+REDEEM_CONCURRENCY = 2
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
@@ -110,13 +114,14 @@ class GiftCodes(commands.Cog):
                         ids = source_data
                 except:
                     pass
-        else:
-            file_data = JsoncParser.parse_file(IDS_FILE)
-            if isinstance(file_data, list):
-                ids = file_data
 
         if not ids:
-            await interaction.edit_original_response("No IDs found in the given source")
+            ids = [p.player_id for p in Players.select(Players.player_id)]
+
+        if not ids:
+            await interaction.edit_original_response(
+                content="No IDs found in the given source or database."
+            )
             return
 
         code_valid, err_code = await test_code_validity(code)
@@ -190,6 +195,9 @@ class RedeemerView(ui.LayoutView):
 
         self.__cancelled = False
 
+        self.__cancel_event = threading.Event()
+        self.__executor = ThreadPoolExecutor(max_workers=REDEEM_CONCURRENCY)
+
         self.logger = setup_logger(
             code,
             f"logs/giftcodes/{code}_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}.log",
@@ -204,6 +212,66 @@ class RedeemerView(ui.LayoutView):
         self.__ids = ids
         self.__info.content = f"**Code: `{self.__code}`\nIncluded accounts: {len(ids)}\nStart the auto redeem?**"
         await self.__interaction.edit_original_response(view=self)
+
+    def _redeem_one_sync(self, player_id: int):
+        """Synchronous worker for redeeming a single player ID. Runs in thread."""
+        try:
+            gift_code_redeemer = GiftCodeRedeemer(
+                player_id=player_id,
+                giftcode=self.__code,
+                onnx_session=self.__onnx,
+                onnx_metadata=self.__metadata,
+            )
+
+            player_name = keys_exists(
+                element=gift_code_redeemer.stove_info,
+                keys=("data", "nickname"),
+                returntype=ReturnType.RESULT,
+            )
+
+            err_code = 0
+            redeem_data = None
+
+            for i in range(MAX_RETRIES):
+                if self.__cancel_event.is_set():
+                    return None
+
+                if i > 0:
+                    gift_code_redeemer.captcha_solution = (
+                        gift_code_redeemer.start_captcha()
+                    )
+
+                redeem_data = gift_code_redeemer.redeem_gift_code()
+                err_code = keys_exists(
+                    redeem_data, ("request", "err_code"), ReturnType.RESULT
+                )
+
+                if err_code in [20000, 40008, 40011, 40018]:
+                    break
+
+                sleep_time = (
+                    random.uniform(1, 5)
+                    if err_code not in [40100, 40101]
+                    else random.uniform(20, 40)
+                )
+
+                time.sleep(sleep_time)
+
+            return {
+                "player_id": player_id,
+                "player_name": player_name,
+                "err_code": err_code,
+                "redeem_data": redeem_data,
+            }
+        except Exception as e:
+            self.logger.exception(f"Exception in _redeem_one_sync for {player_id}: {e}")
+            return {
+                "player_id": player_id,
+                "player_name": "Unknown",
+                "err_code": -1,
+                "redeem_data": None,
+                "exception": str(e),
+            }
 
     def _build_container(self):
         return ui.Container(
@@ -289,113 +357,83 @@ class RedeemerView(ui.LayoutView):
         already_redeemed = []
         fail = []
 
-        to_process = ids.copy()
+        if not ids:
+            return success, already_redeemed, fail
 
-        while to_process:
+        loop = asyncio.get_event_loop()
+
+        # Create futures for all player IDs
+        futures = {
+            loop.run_in_executor(
+                self.__executor, self._redeem_one_sync, player_id
+            ): player_id
+            for player_id in ids
+        }
+
+        # Process results as they complete
+        for completed_future in asyncio.as_completed(futures):
             if self.__cancelled:
+                # Cancel remaining futures
+                for future in futures:
+                    future.cancel()
                 break
-            to_process_copy = to_process.copy()
 
-            for player_id in to_process_copy:
-                if self.__cancelled:
-                    break
+            try:
+                result = await completed_future
+                if result is None:  # Cancelled mid-execution
+                    continue
 
-                gift_code_redeemer = GiftCodeRedeemer(
-                    player_id=player_id,
-                    giftcode=self.__code,
-                    onnx_session=self.__onnx,
-                    onnx_metadata=self.__metadata,
-                )
+                player_id = result["player_id"]
+                player_name = result["player_name"]
+                err_code = result["err_code"]
+                redeem_data = result["redeem_data"]
 
-                player_name = keys_exists(
-                    element=gift_code_redeemer.stove_info,
-                    keys=("data", "nickname"),
-                    returntype=ReturnType.RESULT,
-                )
-
-                err_code = 0
-
-                for i in range(MAX_RETRIES):
-                    if i > 0:
-                        gift_code_redeemer.captcha_solution = (
-                            gift_code_redeemer.start_captcha()
-                        )
-
-                    redeem_data = gift_code_redeemer.redeem_gift_code()
-                    # err_code = redeem_data.get("request").get("err_code")
-                    err_code = keys_exists(
-                        redeem_data, ("request", "err_code"), ReturnType.RESULT
+                # Categorize result
+                if err_code == 20000:
+                    success.append(player_id)
+                    self.logger.info(f"Succeeded for {player_name}[{player_id}]")
+                elif err_code in [40008, 40011]:
+                    already_redeemed.append(player_id)
+                    self.logger.info(f"Already redeemed for {player_name}[{player_id}]")
+                elif err_code == 40018:
+                    fail.append(
+                        {
+                            "request": (
+                                redeem_data.get("request", {}) if redeem_data else {}
+                            ),
+                            "player": (
+                                redeem_data.get("player", {}) if redeem_data else {}
+                            ),
+                        }
                     )
-
-                    if err_code in [20000, 40008, 40011, 40018]:
-                        break
-
-                    sleep_time = (
-                        random.uniform(1, 5)
-                        if err_code not in [40100, 40101]
-                        else random.uniform(20, 40)
+                    self.logger.info(
+                        f"Failed for {player_name}[{player_id}], VIP too low, won't retry"
                     )
-
-                    captcha_failed_text = ""
-                    if sleep_time >= 20:
-                        captcha_failed_text = (
-                            f"\nCaptcha failed, waiting {sleep_time} seconds"
-                        )
-
-                    await self.update_view(
-                        error=ui.TextDisplay(
-                            f"Retry {i + 1}/{MAX_RETRIES} for {player_name}[{player_id}]{captcha_failed_text}"
-                        ),
-                        container_color=discord.Color.red(),
-                    )
-
-                    await asyncio.sleep(sleep_time)
-
-                await self.update_view(error=None, container_color=discord.Color.blue())
-
-                if err_code in [20000, 40008, 40011]:
-                    to_process.remove(player_id)
-                    if err_code == 20000:
-                        success.append(player_id)
-                        self.logger.info(f"Succeded for {player_name}")
-                    else:
-                        already_redeemed.append(player_id)
-                        self.logger.info(f"Already redeemed for {player_name}")
-                    if player_id in fail:
-                        fail.remove(player_id)
-                        self.logger.info(f"Failed for {player_name}, will retry")
                 else:
-                    if err_code in [40018]:
-                        to_process.remove(player_id)
-                        self.logger.info(
-                            f"Failed for {player_name}, VIP too low, won't retry"
-                        )
-                    else:
-                        self.logger.info(f"Failed for {player_name}, will retry")
-                    fail.append(player_id)
-                #     err = f"Error {err_code} encountered for {player_name}[{player_id}]"
-                #     log.warning(err)
-                #     await self.update_view(error=ui.TextDisplay(err))
+                    fail.append(
+                        {
+                            "request": (
+                                redeem_data.get("request", {}) if redeem_data else {}
+                            ),
+                            "player": (
+                                redeem_data.get("player", {}) if redeem_data else {}
+                            ),
+                        }
+                    )
+                    self.logger.info(
+                        f"Failed for {player_name}[{player_id}], will retry"
+                    )
 
-                # match err_code:
-                #     case 20000:
-                #         success.append(player_id)
-                #     case 40008:
-                #         already_redeemed.append(player_id)
-                #     case _:
-                #         fail.append(redeem_data)
-
+                # Update UI after each completion
                 await self.update_view(
-                    progress=ui.TextDisplay(
-                        f"""
+                    progress=ui.TextDisplay(f"""
 Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
 ━━━━━━━━━━━━━━━━━━━━━━
 ✅ {len(success)} / {len(ids)} Success
 ❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
 ❌ {len(fail)} / {len(ids)} Fail
 ━━━━━━━━━━━━━━━━━━━━━━
-"""
-                    ),
+"""),
                     error=(
                         ui.TextDisplay(f"ID: {player_id} failed")
                         if err_code not in [20000, 40008, 40011]
@@ -408,43 +446,52 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                     ),
                 )
 
-                await asyncio.sleep(random.uniform(1, 5))
+            except asyncio.CancelledError:
+                self.logger.info("Future cancelled")
+                continue
+            except Exception as e:
+                self.logger.exception(f"Error processing future: {e}")
+                continue
+
         return success, already_redeemed, fail
 
     async def perform_mass_redeem(self):
-        await self.update_view(
-            title=ui.TextDisplay("## Auto Redeem - Executing"),
-            info=ui.TextDisplay(
-                f"**Code: `{self.__code}`\nIncluded accounts: {len(self.__ids)}**"
-            ),
-            control_buttons=RedeemerCancelButtons(self),
-            container_color=discord.Color.blue(),
-        )
+        try:
+            await self.update_view(
+                title=ui.TextDisplay("## Auto Redeem - Executing"),
+                info=ui.TextDisplay(
+                    f"**Code: `{self.__code}`\nIncluded accounts: {len(self.__ids)}**"
+                ),
+                control_buttons=RedeemerCancelButtons(self),
+                container_color=discord.Color.blue(),
+            )
 
-        self.__success, self.__already_redeemed, self.__fail = await self.execute(
-            self.__ids
-        )
+            self.__success, self.__already_redeemed, self.__fail = await self.execute(
+                self.__ids
+            )
 
-        if self.__cancelled:
-            return
+            if self.__cancelled:
+                return
 
-        await self.update_view(
-            title=ui.TextDisplay("## Auto Redeem - Finished"),
-            error=(
-                ui.TextDisplay(f"**Failed on {len(self.__fail)} accounts. Retry?**")
-                if self.__fail
-                else None
-            ),
-            container_color=discord.Color.green(),
-            control_buttons=RedeemerRetryButtons(self) if self.__fail else None,
-            attachments=[
-                discord.File(
-                    self.logger.handlers[0].baseFilename,
-                    f"{self.code}.log",
-                )
-            ],
-        )
-        shutdown_logger(self.logger)
+            await self.update_view(
+                title=ui.TextDisplay("## Auto Redeem - Finished"),
+                error=(
+                    ui.TextDisplay(f"**Failed on {len(self.__fail)} accounts. Retry?**")
+                    if self.__fail
+                    else None
+                ),
+                container_color=discord.Color.green(),
+                control_buttons=RedeemerRetryButtons(self) if self.__fail else None,
+                attachments=[
+                    discord.File(
+                        self.logger.handlers[0].baseFilename,
+                        f"{self.code}.log",
+                    )
+                ],
+            )
+        finally:
+            self.__executor.shutdown(wait=False)
+            shutdown_logger(self.logger)
 
     async def retry(self):
         await self.update_view(
@@ -457,7 +504,19 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             control_buttons=None,
         )
 
-        to_retry = [f.get("player").get("fid") for f in self.__fail]
+        to_retry = [f.get("player", {}).get("fid") for f in self.__fail]
+        to_retry = [
+            fid for fid in to_retry if fid is not None
+        ]  # Filter out None values
+
+        if not to_retry:
+            await self.update_view(
+                title=ui.TextDisplay("## Auto Redeem - Retry Failed"),
+                error=ui.TextDisplay("No valid IDs to retry"),
+                container_color=discord.Color.red(),
+                control_buttons=None,
+            )
+            return
 
         success, already_redeemed, fail = await self.execute(to_retry)
 
@@ -468,15 +527,13 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
         if fail:
             await self.update_view(
                 title=ui.TextDisplay("## Auto Redeem - Finished Retrying"),
-                progress=ui.TextDisplay(
-                    f"""
+                progress=ui.TextDisplay(f"""
 ━━━━━━━━━━━━━━━━━━━━━━
 ✅ {len(self.__success)} / {len(self.__ids)} Success
 ❗ {len(self.__already_redeemed)} / {len(self.__ids)} Already Redeemed
 ❌ {len(self.__fail)} / {len(self.__ids)} Fail
 ━━━━━━━━━━━━━━━━━━━━━━
-"""
-                ),
+"""),
                 error=(
                     ui.TextDisplay(
                         f"**Still failed on {len(self.__fail)} accounts.\nDo you want info of all failed players?**"
@@ -488,6 +545,20 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                     discord.Color.red() if self.__fail else discord.Color.green()
                 ),
                 control_buttons=RedeemerFailedButtons(self),
+            )
+        else:
+            await self.update_view(
+                title=ui.TextDisplay("## Auto Redeem - Retry Successful"),
+                progress=ui.TextDisplay(f"""
+━━━━━━━━━━━━━━━━━━━━━━
+✅ {len(self.__success)} / {len(self.__ids)} Success
+❗ {len(self.__already_redeemed)} / {len(self.__ids)} Already Redeemed
+❌ {len(self.__fail)} / {len(self.__ids)} Fail
+━━━━━━━━━━━━━━━━━━━━━━
+"""),
+                error=ui.TextDisplay("All retries completed successfully!"),
+                container_color=discord.Color.green(),
+                control_buttons=None,
             )
 
 
@@ -628,9 +699,9 @@ class RedeemerCancelButtons(ui.ActionRow):
     async def cancel_button(
         self, button_interaction: discord.Interaction, button: ui.Button
     ):
-        print(self.__view.logger.handlers[0].baseFilename)
         await button_interaction.response.defer()
         self.__view.cancelled = True
+        self.__view._RedeemerView__cancel_event.set()
         await self.__view.update_view(
             title=ui.TextDisplay("## Auto Redeem - Cancelled"),
             control_buttons=None,

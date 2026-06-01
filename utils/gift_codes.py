@@ -101,12 +101,6 @@ class CaptchaSolver:
         self.metadata = metadata
 
     def fetch_captcha(self):
-        # headers = {
-        #     "accept": "application/json, text/plain, */*",
-        #     "content-type": "application/x-www-form-urlencoded",
-        #     "origin": wos_giftcode_redemption_url,
-        # }
-
         self.req_session.headers.update(get_headers(wos_giftcode_redemption_url))
 
         data_to_encode = {

@@ -8,13 +8,11 @@ from discord.ext import commands
 from discord.app_commands import locale_str
 
 from utils.whitecord import Embed, EmbedField, EmbedAuthor
-from utils.translator import WhiteTranslator
 
 
 class Help(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
-        self.translator: WhiteTranslator = self.client.tree.translator
 
     @app_commands.command(name="help", description="Show help information")
     async def help(

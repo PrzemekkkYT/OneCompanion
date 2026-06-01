@@ -12,23 +12,14 @@ from discord.ext import commands, tasks
 from typing import Literal
 
 from utils.whitecord import Embed, EmbedField
-from utils.translator import WhiteTranslator
 from utils.utils import pretty_traceback
-
-try:
-    from watchdog.observers import Observer
-    from utils.cog_watcher import CogReloader
-
-    # raise
-
-    COG_WATCHER_AVAILABLE = 1
-except:
-    COG_WATCHER_AVAILABLE = 0
 
 logger = logging.getLogger("discord")
 
 Path("logs").mkdir(exist_ok=True)
+Path("logs/giftcodes").mkdir(exist_ok=True)
 Path("cache").mkdir(exist_ok=True)
+
 handler = logging.FileHandler(filename="logs/bot.log", encoding="utf-8", mode="a+")
 
 bot_config = json.load(open("./config.json", "r+"))
@@ -87,7 +78,6 @@ class MyClient(commands.Bot):
             )
 
     async def setup_hook(self):
-        await self.tree.set_translator(WhiteTranslator())
         self.tree.error(self.tree_error_handler)
 
         for filename in os.listdir("./extensions"):
@@ -167,18 +157,4 @@ if __name__ == "__main__":
         else:
             await client.reload_extension(f"extensions.{extension}")
 
-    if COG_WATCHER_AVAILABLE:
-        print("starting observer")
-        observer = Observer()
-        observer.schedule(CogReloader(client), "./extensions", recursive=False)
-        observer.schedule(CogReloader(client), "./utils", recursive=False)
-        observer.start()
-
-        # client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-        try:
-            client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
-        finally:
-            observer.stop()
-            observer.join()
-    else:
-        client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
+    client.run(bot_config["token"], log_handler=handler, log_level=logging.INFO)
