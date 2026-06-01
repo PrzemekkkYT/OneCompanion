@@ -1,0 +1,14 @@
+{
+    "command": "",
+    "title": "Translator",
+    "description": "React to any message with a flags to get the message translated into the selected language",
+    "options": [
+        {
+            "name": "Flags",
+            "type": "",
+            "description": "🇵🇱, 🇬🇧, 🇺🇸, 🇩🇪, 🇫🇷, 🇪🇸, 🇮🇹, 🇵🇹, 🇧🇷, 🇳🇱, 🇸🇪, 🇳🇴, 🇩🇰, 🇫🇮, 🇨🇿, 🇸🇰, 🇭🇺, 🇷🇴, 🇧🇬, 🇺🇦, 🇷🇺, 🇹🇷, 🇬🇷, 🇯🇵, 🇰🇷, 🇨🇳, 🇹🇼, 🇮🇳, 🇸🇦, 🇮🇱, 🇮🇩, 🇻🇳, 🇹🇭.",
+            "required": false
+        }
+    ]
+}
+

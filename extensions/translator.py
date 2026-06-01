@@ -3,7 +3,6 @@ import json
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.app_commands import locale_str
 
 from google.cloud import translate_v2
 from google.oauth2 import service_account

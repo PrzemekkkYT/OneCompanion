@@ -4,7 +4,6 @@ import discord
 from discord import ui
 from discord import app_commands
 from discord.ext import commands
-from discord.app_commands import locale_str
 
 from orms.configs import GuildConfigs
 from utils.whitecord import Embed

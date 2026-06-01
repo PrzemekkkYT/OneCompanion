@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands, tasks
 from typing import Literal
 
-from utils.whitecord import Embed, EmbedField
+from utils.whitecord import Embed, EmbedField, WhiteTranslator
 from utils.utils import pretty_traceback
 
 logger = logging.getLogger("discord")
@@ -78,6 +78,7 @@ class MyClient(commands.Bot):
             )
 
     async def setup_hook(self):
+        await self.tree.set_translator(WhiteTranslator())
         self.tree.error(self.tree_error_handler)
 
         for filename in os.listdir("./extensions"):

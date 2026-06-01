@@ -5,7 +5,6 @@ import discord
 from discord import ui
 from discord import app_commands
 from discord.ext import commands
-from discord.app_commands import locale_str
 
 from utils.whitecord import Embed, EmbedField, EmbedAuthor
 
@@ -18,17 +17,7 @@ class Help(commands.Cog):
     async def help(
         self,
         interaction: discord.Interaction,
-        command: Literal[
-            "schedule plan",
-            "schedule list",
-            "schedule toggle",
-            "schedule delete",
-            "squads",
-            "redeemer",
-            "event notification",
-            "event recurrence",
-            "event create",
-        ],
+        command: Literal["redeemer", "translator"],
     ):
         with open(
             f"data/help_docs/{command.replace(' ', '_').replace('/', '__')}.json",
