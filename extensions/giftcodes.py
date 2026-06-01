@@ -24,6 +24,7 @@ from utils.utils import ReturnType, keys_exists, setup_logger, shutdown_logger
 
 MAX_RETRIES = 5
 REDEEM_CONCURRENCY = 2
+MAX_CONSECUTIVE_ERRORS = 10
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
@@ -357,6 +358,8 @@ class RedeemerView(ui.LayoutView):
         already_redeemed = []
         fail = []
 
+        consecutive_errors = 0
+
         if not ids:
             return success, already_redeemed, fail
 
@@ -391,9 +394,11 @@ class RedeemerView(ui.LayoutView):
                 # Categorize result
                 if err_code == 20000:
                     success.append(player_id)
+                    consecutive_errors = 0
                     self.logger.info(f"Succeeded for {player_name}[{player_id}]")
                 elif err_code in [40008, 40011]:
                     already_redeemed.append(player_id)
+                    consecutive_errors = 0
                     self.logger.info(f"Already redeemed for {player_name}[{player_id}]")
                 elif err_code == 40018:
                     fail.append(
@@ -406,6 +411,7 @@ class RedeemerView(ui.LayoutView):
                             ),
                         }
                     )
+                    consecutive_errors = 0
                     self.logger.info(
                         f"Failed for {player_name}[{player_id}], VIP too low, won't retry"
                     )
@@ -420,9 +426,40 @@ class RedeemerView(ui.LayoutView):
                             ),
                         }
                     )
+                    consecutive_errors += 1
                     self.logger.info(
                         f"Failed for {player_name}[{player_id}], will retry"
                     )
+
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    self.logger.warning("Too many consecutive errors, aborting.")
+                    self.__cancelled = True
+                    for future in futures:
+                        future.cancel()
+
+                    await self.update_view(
+                        title=ui.TextDisplay(
+                            "## Auto Redeem - Aborted (Too many errors)"
+                        ),
+                        progress=ui.TextDisplay(
+                            f"Aborted after {consecutive_errors} consecutive errors."
+                        ),
+                        error=None,
+                        control_buttons=None,
+                        container_color=discord.Color.red(),
+                        attachments=[
+                            discord.File(
+                                self.logger.handlers[0].baseFilename,
+                                f"{self.code}.log",
+                            )
+                        ],
+                    )
+
+                    if self.__interaction.channel:
+                        await self.__interaction.channel.send(
+                            content=f"{self.__interaction.user.mention} ⚠️ Mass redeem for code `{self.__code}` has been prematurely aborted due to too many errors. Check the logs for more info."
+                        )
+                    break
 
                 # Update UI after each completion
                 await self.update_view(
@@ -519,6 +556,9 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             return
 
         success, already_redeemed, fail = await self.execute(to_retry)
+
+        if self.__cancelled:
+            return
 
         self.__success = self.__success + success
         self.__already_redeemed = self.__already_redeemed + already_redeemed

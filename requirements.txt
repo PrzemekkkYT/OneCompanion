@@ -10,3 +10,4 @@ pillow
 typing_extensions
 jsonc-parser
 discord-ext-ipc
+google-cloud-translate
