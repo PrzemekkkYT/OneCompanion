@@ -195,6 +195,8 @@ class GiftCodeRedeemer:
             self.onnx_session = onnx_session
             self.onnx_metadata = onnx_metadata
             self.captcha_solution = self.start_captcha()
+        else:
+            raise Exception("Player not found")
 
     def start_captcha(self):
         captcha_solver = CaptchaSolver(
@@ -205,7 +207,7 @@ class GiftCodeRedeemer:
         )
         return captcha_solver.solve_captcha()
 
-    def get_stove_info(self, player_id: int):
+    def get_stove_info(self, player_id: int) -> tuple[requests.Session, dict]:
         session = requests.Session()
         session.mount(
             "https://",
@@ -219,12 +221,6 @@ class GiftCodeRedeemer:
             ),
         )
 
-        # headers = {
-        #     "accept": "application/json, text/plain, */*",
-        #     "content-type": "application/x-www-form-urlencoded",
-        #     "origin": wos_giftcode_redemption_url,
-        # }
-
         session.headers.update(get_headers(wos_giftcode_redemption_url))
 
         data_to_encode = {
@@ -234,13 +230,16 @@ class GiftCodeRedeemer:
         data = encode_data(data_to_encode)
         response_stove_info = session.post(
             wos_player_info_url,
-            # headers=headers,
             data=data,
         )
-        # if response_stove_info.status_code != 200:
-        #     logger.warning(response_stove_info.status_code)
-        # logger.info(response_stove_info.content)
-        return session, response_stove_info.json()
+
+        stove_info = response_stove_info.json()
+        err_code = stove_info.get("err_code", 0)
+
+        if err_code in [40001]:
+            return session, None
+
+        return session, stove_info
 
     def redeem_gift_code(self):
         data_to_encode = {

@@ -1,0 +1,5 @@
+{
+    "command": "/list_players",
+    "title": "List Players",
+    "description": "Display a paginated list of all players currently stored in the database."
+}

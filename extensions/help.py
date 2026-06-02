@@ -17,7 +17,9 @@ class Help(commands.Cog):
     async def help(
         self,
         interaction: discord.Interaction,
-        command: Literal["redeemer", "translator"],
+        command: Literal[
+            "redeemer", "translator", "add_player", "remove_player", "list_players"
+        ],
     ):
         with open(
             f"data/help_docs/{command.replace(' ', '_').replace('/', '__')}.json",

@@ -21,6 +21,7 @@ from discord.utils import MISSING
 from orms.players import Players
 from utils.gift_codes import GiftCodeRedeemer, load_model, test_code_validity
 from utils.utils import ReturnType, keys_exists, setup_logger, shutdown_logger
+from utils.whitecord import LVPagination, LVPage
 
 MAX_RETRIES = 5
 REDEEM_CONCURRENCY = 2
@@ -42,6 +43,179 @@ class GiftCodes(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.translator = self.client.tree.translator
+
+    @app_commands.command(
+        name="add_player",
+        description="Add a player or list of players to the database.",
+    )
+    async def add_player(self, interaction: discord.Interaction, ids_source: str):
+        await interaction.response.defer()
+
+        ids = []
+        if ids_source.startswith("http"):
+            try:
+                req = await asyncio.to_thread(requests.get, ids_source)
+                req_data = JsoncParser.parse_str(req.text)
+                if isinstance(req_data, list):
+                    ids = req_data
+            except:
+                pass
+        else:
+            try:
+                source_data = JsoncParser.parse_str(ids_source)
+                if isinstance(source_data, list):
+                    ids = source_data
+                elif isinstance(source_data, int):
+                    ids = [source_data]
+            except:
+                pass
+
+        if not ids and ids_source.isdigit():
+            ids = [int(ids_source)]
+
+        if not ids:
+            await interaction.edit_original_response(
+                content="No valid IDs found in the provided source."
+            )
+            return
+
+        # Check if player exists using the redeemer's utility
+        dummy_redeemer = GiftCodeRedeemer.__new__(GiftCodeRedeemer)
+
+        added = 0
+        existing = 0
+        failed = 0
+        last_name = "Unknown"
+
+        for player_id in ids:
+            try:
+                _, stove_info = await asyncio.to_thread(
+                    dummy_redeemer.get_stove_info, player_id
+                )
+            except Exception:
+                stove_info = None
+
+            if not stove_info:
+                failed += 1
+                continue
+
+            last_name = stove_info.get("data", {}).get("nickname", "Unknown")
+
+            player, created = Players.get_or_create(
+                player_id=player_id, defaults={"name": last_name}
+            )
+
+            if created:
+                added += 1
+            else:
+                existing += 1
+
+        content = f"Processed {len(ids)} IDs:\n✅ Added: {added}\n⚠️ Already existed: {existing}\n❌ Failed: {failed}"
+
+        # Return nicer formatting if only a single ID was processed
+        if len(ids) == 1:
+            if added == 1:
+                content = (
+                    f"Successfully added **{last_name}** (`{ids[0]}`) to the database."
+                )
+            elif existing == 1:
+                content = f"Player **{last_name}** (`{ids[0]}`) already exists in the database."
+            elif failed == 1:
+                content = f"Player with ID `{ids[0]}` not found or API error."
+
+        await interaction.edit_original_response(content=content)
+
+    @app_commands.command(
+        name="remove_player",
+        description="Remove a player or list of players from the database.",
+    )
+    async def remove_player(self, interaction: discord.Interaction, ids_source: str):
+        await interaction.response.defer()
+
+        ids = []
+        if ids_source.startswith("http"):
+            try:
+                req = await asyncio.to_thread(requests.get, ids_source)
+                req_data = JsoncParser.parse_str(req.text)
+                if isinstance(req_data, list):
+                    ids = req_data
+            except:
+                pass
+        else:
+            try:
+                source_data = JsoncParser.parse_str(ids_source)
+                if isinstance(source_data, list):
+                    ids = source_data
+                elif isinstance(source_data, int):
+                    ids = [source_data]
+            except:
+                pass
+
+        if not ids and ids_source.isdigit():
+            ids = [int(ids_source)]
+
+        if not ids:
+            await interaction.edit_original_response(
+                content="No valid IDs found in the provided source."
+            )
+            return
+
+        from orms.players import Players
+
+        unique_ids = list(set(ids))
+        removed = 0
+        batch_size = 500
+
+        for i in range(0, len(unique_ids), batch_size):
+            batch = unique_ids[i : i + batch_size]
+            query = Players.delete().where(Players.player_id.in_(batch))
+            removed += query.execute()
+
+        not_found = len(unique_ids) - removed
+        content = f"Processed {len(unique_ids)} unique IDs:\n🗑️ Removed: {removed}\n⚠️ Not found: {not_found}"
+
+        if len(unique_ids) == 1:
+            if removed == 1:
+                content = f"Successfully removed player ID `{unique_ids[0]}` from the database."
+            else:
+                content = f"Player ID `{unique_ids[0]}` was not found in the database."
+
+        await interaction.edit_original_response(content=content)
+
+    @app_commands.command(
+        name="list_players",
+        description="Display a list of all players in the database.",
+    )
+    async def list_players(self, interaction: discord.Interaction):
+        from orms.players import Players
+
+        all_players = list(Players.select().order_by(Players.name))
+
+        if not all_players:
+            await interaction.response.send_message(
+                content="No players found in the database."
+            )
+            return
+
+        chunk_size = 20
+        pages = []
+
+        for i in range(0, len(all_players), chunk_size):
+            chunk = all_players[i : i + chunk_size]
+            player_list_str = "\n".join(
+                [f"`{p.player_id}` - **{p.name or 'Unknown'}**" for p in chunk]
+            )
+
+            container = ui.Container(
+                ui.TextDisplay(f"## Players List (Page {i // chunk_size + 1})"),
+                ui.TextDisplay(
+                    f"**Total players: {len(all_players)}**\n\n{player_list_str}"
+                ),
+            )
+            pages.append(LVPage(container))
+
+        paginator = LVPagination(pages=pages, interaction=interaction)
+        await paginator.send_paginator()
 
     @app_commands.command()
     async def findcodes(self, interaction: discord.Interaction):
@@ -348,9 +522,11 @@ class RedeemerView(ui.LayoutView):
             self.add_item(ui.File(att))
 
         if not only_return:
-            await self.__interaction.edit_original_response(
-                view=self, attachments=self.__attachments
-            )
+            kwargs = {"view": self}
+            if attachments is not MISSING:
+                kwargs["attachments"] = self.__attachments
+
+            await self.__interaction.edit_original_response(**kwargs)
         return self
 
     async def execute(self, ids: List[int]):
@@ -376,9 +552,13 @@ class RedeemerView(ui.LayoutView):
         # Process results as they complete
         for completed_future in asyncio.as_completed(futures):
             if self.__cancelled:
+                self.logger.info(
+                    "Execution loop detected cancellation. Aborting remaining tasks."
+                )
                 # Cancel remaining futures
                 for future in futures:
                     future.cancel()
+                completed_future.close()
                 break
 
             try:
@@ -742,6 +922,7 @@ class RedeemerCancelButtons(ui.ActionRow):
         await button_interaction.response.defer()
         self.__view.cancelled = True
         self.__view._RedeemerView__cancel_event.set()
+        self.__view.logger.info("Auto Redeem cancelled early by user.")
         await self.__view.update_view(
             title=ui.TextDisplay("## Auto Redeem - Cancelled"),
             control_buttons=None,
