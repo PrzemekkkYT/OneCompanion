@@ -15,7 +15,7 @@ from requests.adapters import HTTPAdapter, Retry
 import requests
 
 from utils.browser_headers import get_headers
-from utils.utils import ReturnType, keys_exists
+from utils.utils import ReturnType, keys_exists, setup_logger
 
 RESOURCES_FOLDER = "resources"
 # WOS API URLs and Key
@@ -25,7 +25,7 @@ wos_captcha_url = "https://wos-giftcode-api.centurygame.com/api/captcha"
 wos_giftcode_redemption_url = "https://wos-giftcode.centurygame.com"
 wos_encrypt_key = "tB87#kPtkxqOS2"
 
-logger = logging.getLogger("giftcodes")
+logger = setup_logger("giftcodes", "logs/giftcodes.log")
 
 MAX_RETRIES = 5
 

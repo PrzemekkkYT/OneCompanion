@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import datetime
 from types import NoneType
-from typing import List, Optional, Union
+from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from jsonc_parser.parser import JsoncParser
 
@@ -29,8 +29,6 @@ MAX_CONSECUTIVE_ERRORS = 10
 
 GIFTCODE_API_URL = "http://gift-code-api.whiteout-bot.com/giftcode_api.php"
 GIFTCODE_API_KEY = "super_secret_bot_token_nobody_will_ever_find"
-
-log = setup_logger("giftcodes", "logs/giftcodes.log")
 
 
 class CodeInvalid(Exception): ...

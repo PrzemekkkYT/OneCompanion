@@ -8,6 +8,7 @@ from google.cloud import translate_v2
 from google.oauth2 import service_account
 
 from orms.configs import GuildConfigs
+from utils.utils import setup_logger
 from utils.whitecord import Embed, EmbedAuthor
 import os
 from datetime import date
@@ -49,6 +50,8 @@ FLAG_TO_LOCALE: dict[str, str] = {
 }
 
 LOCALE_TO_FLAG: dict[str, str] = {v: k for k, v in FLAG_TO_LOCALE.items()}
+
+log = setup_logger("translator", "logs/translator.log")
 
 
 class Translator(commands.Cog):
@@ -218,7 +221,7 @@ class Translator(commands.Cog):
             )
 
         except Exception as e:
-            print(f"Błąd Webhooka/Tłumaczenia: {e}")
+            log.info(f"Błąd Webhooka/Tłumaczenia: {e}")
 
 
 async def setup(client: commands.Bot):
