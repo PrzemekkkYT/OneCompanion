@@ -1,0 +1,25 @@
+{
+    "command": "/player add_single",
+    "title": "Add Single Player",
+    "description": "Add or update a single player in the database.",
+    "options": [
+        {
+            "name": "id",
+            "type": "number",
+            "description": "The player's unique ID.",
+            "required": true
+        },
+        {
+            "name": "state",
+            "type": "number",
+            "description": "The player's state/server ID.",
+            "required": true
+        },
+        {
+            "name": "name",
+            "type": "text",
+            "description": "The player's in-game name.",
+            "required": true
+        }
+    ]
+}

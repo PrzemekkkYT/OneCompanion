@@ -19,7 +19,7 @@ from discord import ButtonStyle
 from discord.utils import MISSING
 
 from orms.players import Players
-from utils.gift_codes import GiftCodeRedeemer, load_model, test_code_validity
+from utils.gift_codes import GiftCodeRedeemer, test_code_validity
 from utils.utils import ReturnType, keys_exists, setup_logger, shutdown_logger
 from utils.whitecord import LVPagination, LVPage
 
@@ -42,92 +42,128 @@ class GiftCodes(commands.Cog):
         self.client = client
         self.translator = self.client.tree.translator
 
-    @app_commands.command(
-        name="add_player",
-        description="Add a player or list of players to the database.",
+    player = app_commands.Group(
+        name="player", description="Commands for managing players."
     )
-    async def add_player(self, interaction: discord.Interaction, ids_source: str):
+
+    @player.command(
+        name="add_single",
+        description="Add or update a single player in the database.",
+    )
+    async def player_add_single(
+        self,
+        interaction: discord.Interaction,
+        id: int,
+        state: int,
+        name: str,
+    ):
+        """Adds or updates a single player in the database."""
         await interaction.response.defer()
 
-        ids = []
-        if ids_source.startswith("http"):
-            try:
-                req = await asyncio.to_thread(requests.get, ids_source)
-                req_data = JsoncParser.parse_str(req.text)
-                if isinstance(req_data, list):
-                    ids = req_data
-            except:
-                pass
-        else:
-            try:
-                source_data = JsoncParser.parse_str(ids_source)
-                if isinstance(source_data, list):
-                    ids = source_data
-                elif isinstance(source_data, int):
-                    ids = [source_data]
-            except:
-                pass
-
-        if not ids and ids_source.isdigit():
-            ids = [int(ids_source)]
-
-        if not ids:
-            await interaction.edit_original_response(
-                content="No valid IDs found in the provided source."
-            )
-            return
-
-        # Check if player exists using the redeemer's utility
-        dummy_redeemer = GiftCodeRedeemer.__new__(GiftCodeRedeemer)
+        players_to_add = [{"id": id, "state": state, "name": name}]
 
         added = 0
         existing = 0
         failed = 0
-        last_name = "Unknown"
 
-        for player_id in ids:
-            try:
-                _, stove_info = await asyncio.to_thread(
-                    dummy_redeemer.get_stove_info, player_id
-                )
-            except Exception:
-                stove_info = None
+        for player_data in players_to_add:
+            player_id = player_data.get("id")
+            player_state = player_data.get("state")
+            player_name = player_data.get("name")
 
-            if not stove_info:
+            if not all([isinstance(player_id, int), isinstance(player_state, int)]):
                 failed += 1
                 continue
 
-            last_name = stove_info.get("data", {}).get("nickname", "Unknown")
-
             player, created = Players.get_or_create(
-                player_id=player_id, defaults={"name": last_name}
+                player_id=player_id,
+                defaults={"player_state": player_state, "name": player_name},
             )
 
             if created:
                 added += 1
             else:
+                # If player exists, update their info
+                Players.update(player_state=player_state, name=player_name).where(
+                    Players.player_id == player_id
+                ).execute()
                 existing += 1
 
-        content = f"Processed {len(ids)} IDs:\n✅ Added: {added}\n⚠️ Already existed: {existing}\n❌ Failed: {failed}"
+        content = f"Processed {len(players_to_add)} players:\n✅ Added: {added}\n🔄 Updated: {existing}\n❌ Failed (invalid data): {failed}"
 
-        # Return nicer formatting if only a single ID was processed
-        if len(ids) == 1:
+        if len(players_to_add) == 1:
             if added == 1:
-                content = (
-                    f"Successfully added **{last_name}** (`{ids[0]}`) to the database."
-                )
+                content = f"Successfully added **{name}** (`{id}`) to the database."
             elif existing == 1:
-                content = f"Player **{last_name}** (`{ids[0]}`) already exists in the database."
+                content = (
+                    f"Player **{name}** (`{id}`) already exists and has been updated."
+                )
             elif failed == 1:
-                content = f"Player with ID `{ids[0]}` not found or API error."
+                content = f"Failed to add player with ID `{id}` due to invalid data."
 
         await interaction.edit_original_response(content=content)
 
-    @app_commands.command(
-        name="remove_player",
+    @player.command(
+        name="add_multiple",
+        description="Add or update multiple players from a JSON/JSONC source.",
+    )
+    async def player_add_multiple(
+        self, interaction: discord.Interaction, ids_source: str
+    ):
+        """Adds or updates multiple players from a JSON/JSONC source."""
+        await interaction.response.defer()
+
+        players_to_add = []
+        try:
+            if ids_source.startswith("http"):
+                req = await asyncio.to_thread(requests.get, ids_source)
+                source_data = JsoncParser.parse_str(req.text)
+            else:
+                source_data = JsoncParser.parse_str(ids_source)
+
+            if isinstance(source_data, list):
+                players_to_add = source_data
+            else:
+                raise ValueError("Parsed data is not a list.")
+        except Exception as e:
+            await interaction.edit_original_response(
+                content=f"Failed to parse `ids_source`: {e}"
+            )
+            return
+
+        added, existing, failed = 0, 0, 0
+
+        for player_data in players_to_add:
+            player_id, player_state, player_name = (
+                player_data.get("id"),
+                player_data.get("state"),
+                player_data.get("name"),
+            )
+
+            if not all([isinstance(player_id, int), isinstance(player_state, int)]):
+                failed += 1
+                continue
+
+            _, created = Players.get_or_create(
+                player_id=player_id,
+                defaults={"player_state": player_state, "name": player_name},
+            )
+            if created:
+                added += 1
+            else:
+                Players.update(player_state=player_state, name=player_name).where(
+                    Players.player_id == player_id
+                ).execute()
+                existing += 1
+
+        content = f"Processed {len(players_to_add)} players:\n✅ Added: {added}\n🔄 Updated: {existing}\n❌ Failed (invalid data): {failed}"
+        await interaction.edit_original_response(content=content)
+
+    @player.command(
+        name="remove",
         description="Remove a player or list of players from the database.",
     )
-    async def remove_player(self, interaction: discord.Interaction, ids_source: str):
+    async def player_remove(self, interaction: discord.Interaction, ids_source: str):
         await interaction.response.defer()
 
         ids = []
@@ -180,11 +216,10 @@ class GiftCodes(commands.Cog):
 
         await interaction.edit_original_response(content=content)
 
-    @app_commands.command(
-        name="list_players",
-        description="Display a list of all players in the database.",
+    @player.command(
+        name="list", description="Display a list of all players in the database."
     )
-    async def list_players(self, interaction: discord.Interaction):
+    async def player_list(self, interaction: discord.Interaction):
         from orms.players import Players
 
         all_players = list(Players.select().order_by(Players.name))
@@ -270,25 +305,38 @@ class GiftCodes(commands.Cog):
         ids_source: Optional[str] = None,
     ):
         await interaction.response.defer()
+
         ids = []
         if ids_source:
-            if ids_source.startswith("http"):
-                try:
-                    req = requests.get(ids_source)
-                    req_data = JsoncParser.parse_str(req.text)
-                    if isinstance(req_data, list):
-                        ids = req_data
-                except:
-                    pass
-            else:
-                try:
+            try:
+                if ids_source.startswith("http"):
+                    req = await asyncio.to_thread(requests.get, ids_source)
+                    source_data = JsoncParser.parse_str(req.text)
+                else:
                     source_data = JsoncParser.parse_str(ids_source)
-                    if isinstance(source_data, list):
+
+                if isinstance(source_data, list):
+                    # Check if the list contains dicts with 'id' or just integers
+                    if all(
+                        isinstance(item, dict) and "id" in item for item in source_data
+                    ):
+                        ids = [item["id"] for item in source_data]
+                    elif all(isinstance(item, int) for item in source_data):
                         ids = source_data
-                except:
-                    pass
+                    else:
+                        raise ValueError(
+                            "List in `ids_source` contains mixed or invalid types."
+                        )
+                else:
+                    raise ValueError("Parsed data from `ids_source` is not a list.")
+            except Exception as e:
+                await interaction.edit_original_response(
+                    content=f"Failed to parse `ids_source`: {e}"
+                )
+                return
 
         if not ids:
+            # If no ids from source, get all from DB
             ids = [p.player_id for p in Players.select(Players.player_id)]
 
         if not ids:
@@ -347,8 +395,6 @@ class RedeemerView(ui.LayoutView):
         self.__interaction = interaction
         self.__code = code
 
-        self.__onnx, self.__metadata = load_model()
-
         self.__title = ui.TextDisplay("## Auto Redeem - Confirm")
         self.__info = ui.TextDisplay(f"### Code: `{self.__code}`")
         self.__progress: ui.TextDisplay | None = None
@@ -386,40 +432,24 @@ class RedeemerView(ui.LayoutView):
         self.__info.content = f"**Code: `{self.__code}`\nIncluded accounts: {len(ids)}\nStart the auto redeem?**"
         await self.__interaction.edit_original_response(view=self)
 
-    def _redeem_one_sync(self, player_id: int):
+    def _redeem_one_sync(self, player_id: int, player_state: int, player_name: str):
         """Synchronous worker for redeeming a single player ID. Runs in thread."""
         try:
             gift_code_redeemer = GiftCodeRedeemer(
-                player_id=player_id,
-                giftcode=self.__code,
-                onnx_session=self.__onnx,
-                onnx_metadata=self.__metadata,
-            )
-
-            player_name = keys_exists(
-                element=gift_code_redeemer.stove_info,
-                keys=("data", "nickname"),
-                returntype=ReturnType.RESULT,
+                player_id=player_id, player_state=player_state, giftcode=self.__code
             )
 
             err_code = 0
             redeem_data = None
 
-            for i in range(MAX_RETRIES):
+            for _ in range(MAX_RETRIES):
                 if self.__cancel_event.is_set():
                     return None
 
-                if i > 0:
-                    gift_code_redeemer.captcha_solution = (
-                        gift_code_redeemer.start_captcha()
-                    )
-
                 redeem_data = gift_code_redeemer.redeem_gift_code()
-                err_code = keys_exists(
-                    redeem_data, ("request", "err_code"), ReturnType.RESULT
-                )
+                err_code = redeem_data.err_code
 
-                if err_code in [20000, 40008, 40011, 40018]:
+                if err_code in [20000, 40008, 40011, 40018, 40020]:
                     break
 
                 sleep_time = (
@@ -432,6 +462,7 @@ class RedeemerView(ui.LayoutView):
 
             return {
                 "player_id": player_id,
+                "player_state": player_state,
                 "player_name": player_name,
                 "err_code": err_code,
                 "redeem_data": redeem_data,
@@ -440,7 +471,8 @@ class RedeemerView(ui.LayoutView):
             self.logger.exception(f"Exception in _redeem_one_sync for {player_id}: {e}")
             return {
                 "player_id": player_id,
-                "player_name": "Unknown",
+                "player_state": player_state,
+                "player_name": player_name,
                 "err_code": -1,
                 "redeem_data": None,
                 "exception": str(e),
@@ -527,14 +559,14 @@ class RedeemerView(ui.LayoutView):
             await self.__interaction.edit_original_response(**kwargs)
         return self
 
-    async def execute(self, ids: List[int]):
+    async def execute(self, players_to_redeem: List[Players | dict]):
         success = []
         already_redeemed = []
         fail = []
 
         consecutive_errors = 0
 
-        if not ids:
+        if not players_to_redeem:
             return success, already_redeemed, fail
 
         loop = asyncio.get_event_loop()
@@ -542,9 +574,14 @@ class RedeemerView(ui.LayoutView):
         # Create futures for all player IDs
         futures = {
             loop.run_in_executor(
-                self.__executor, self._redeem_one_sync, player_id
-            ): player_id
-            for player_id in ids
+                self.__executor,
+                self._redeem_one_sync,
+                p.player_id,
+                p.player_state,
+                p.name,
+            ): p.player_id
+            for p in players_to_redeem
+            if isinstance(p, Players)
         }
 
         # Process results as they complete
@@ -565,6 +602,7 @@ class RedeemerView(ui.LayoutView):
                     continue
 
                 player_id = result["player_id"]
+                player_state = result["player_state"]
                 player_name = result["player_name"]
                 err_code = result["err_code"]
                 redeem_data = result["redeem_data"]
@@ -581,27 +619,33 @@ class RedeemerView(ui.LayoutView):
                 elif err_code == 40018:
                     fail.append(
                         {
-                            "request": (
-                                redeem_data.get("request", {}) if redeem_data else {}
-                            ),
-                            "player": (
-                                redeem_data.get("player", {}) if redeem_data else {}
-                            ),
+                            "player_id": player_id,
+                            "player_state": player_state,
+                            "name": player_name,
                         }
                     )
                     consecutive_errors = 0
                     self.logger.info(
                         f"Failed for {player_name}[{player_id}], VIP too low, won't retry"
                     )
+                elif err_code == 40020:
+                    fail.append(
+                        {
+                            "player_id": player_id,
+                            "player_state": player_state,
+                            "name": player_name,
+                        }
+                    )
+                    consecutive_errors = 0
+                    self.logger.info(
+                        f"Failed for {player_name}[{player_id}], Player not in the said state, won't retry"
+                    )
                 else:
                     fail.append(
                         {
-                            "request": (
-                                redeem_data.get("request", {}) if redeem_data else {}
-                            ),
-                            "player": (
-                                redeem_data.get("player", {}) if redeem_data else {}
-                            ),
+                            "player_id": player_id,
+                            "player_state": player_state,
+                            "name": player_name,
                         }
                     )
                     consecutive_errors += 1
@@ -642,11 +686,11 @@ class RedeemerView(ui.LayoutView):
                 # Update UI after each completion
                 await self.update_view(
                     progress=ui.TextDisplay(f"""
-Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
+Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(players_to_redeem)}
 ━━━━━━━━━━━━━━━━━━━━━━
-✅ {len(success)} / {len(ids)} Success
-❗ {len(already_redeemed)} / {len(ids)} Already Redeemed
-❌ {len(fail)} / {len(ids)} Fail
+✅ {len(success)} / {len(players_to_redeem)} Success
+❗ {len(already_redeemed)} / {len(players_to_redeem)} Already Redeemed
+❌ {len(fail)} / {len(players_to_redeem)} Fail
 ━━━━━━━━━━━━━━━━━━━━━━
 """),
                     error=(
@@ -681,8 +725,11 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
                 container_color=discord.Color.blue(),
             )
 
+            players_to_redeem = Players.select().where(
+                Players.player_id.in_(self.__ids)
+            )
             self.__success, self.__already_redeemed, self.__fail = await self.execute(
-                self.__ids
+                players_to_redeem
             )
 
             if self.__cancelled:
@@ -719,12 +766,16 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             control_buttons=None,
         )
 
-        to_retry = [f.get("player", {}).get("fid") for f in self.__fail]
-        to_retry = [
-            fid for fid in to_retry if fid is not None
-        ]  # Filter out None values
+        to_retry_players = []
+        for failed_player_data in self.__fail:
+            p = Players(
+                player_id=failed_player_data.get("player_id"),
+                player_state=failed_player_data.get("player_state"),
+                name=failed_player_data.get("name"),
+            )
+            to_retry_players.append(p)
 
-        if not to_retry:
+        if not to_retry_players:
             await self.update_view(
                 title=ui.TextDisplay("## Auto Redeem - Retry Failed"),
                 error=ui.TextDisplay("No valid IDs to retry"),
@@ -733,7 +784,7 @@ Finished for {len(success) + len(already_redeemed) + len(fail)} / {len(ids)}
             )
             return
 
-        success, already_redeemed, fail = await self.execute(to_retry)
+        success, already_redeemed, fail = await self.execute(to_retry_players)
 
         if self.__cancelled:
             return

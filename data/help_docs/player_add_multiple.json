@@ -1,19 +1,13 @@
 {
-    "command": "/redeemer",
-    "title": "Redeemer",
-    "description": "Redeem gift code for everyone in the alliance :)\nCurrently hardcoded list, later will be interactive or something.",
+    "command": "/player add_multiple",
+    "title": "Add Multiple Players",
+    "description": "Add or update multiple players in the database from a JSON or JSONC source.",
     "options": [
-        {
-            "name": "code",
-            "type": "text",
-            "description": "Gift code to redeem",
-            "required": true
-        },
         {
             "name": "ids_source",
             "type": "text",
             "description": "Source for multiple players. A URL to a raw JSONC file or a raw JSONC string.",
-            "required": false,
+            "required": true,
             "formats": [
                 "http://link.here/ids.json",
                 "[{\"id\": 123, \"state\": 456, \"name\": \"Player1\"}, ...]"

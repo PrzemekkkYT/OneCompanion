@@ -18,7 +18,12 @@ class Help(commands.Cog):
         self,
         interaction: discord.Interaction,
         command: Literal[
-            "redeemer", "translator", "add_player", "remove_player", "list_players"
+            "redeemer",
+            "translator",
+            "player add_single",
+            "player add_multiple",
+            "player remove",
+            "player list",
         ],
     ):
         with open(

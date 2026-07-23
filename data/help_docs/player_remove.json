@@ -1,5 +1,5 @@
 {
-    "command": "/remove_player",
+    "command": "/player remove",
     "title": "Remove Player",
     "description": "Remove a player or list of players from the database.",
     "options": [
